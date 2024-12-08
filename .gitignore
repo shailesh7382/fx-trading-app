@@ -9,3 +9,5 @@
 /.idea/fx-trading-app.iml
 /.idea/
 /fx-parent-pom/fx-auth-rs/target/
+/fx-parent-pom/fx-rate-publisher/target/
+/fx-parent-pom/common-data/target/

@@ -15,3 +15,5 @@ To get you started you can simply clone the `fx-trading-app` repository and open
 - ![img_3.png](img_3.png)
 - Now created common data to generate pricing for 30 ccy pairs using a controlled random in place. 
 - ![img_4.png](img_4.png)
+- We have created ActiveMQ Application that is publishing market data to mq topic every 500ms for 28 pairs.
+- ![img_5.png](img_5.png)
