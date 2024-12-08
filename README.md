@@ -17,3 +17,6 @@ To get you started you can simply clone the `fx-trading-app` repository and open
 - ![img_4.png](img_4.png)
 - We have created ActiveMQ Application that is publishing market data to mq topic every 500ms for 28 pairs.
 - ![img_5.png](img_5.png)
+- created fx-pricing-rs to subscribe to MQ for prices and persiste them in data base. 
+Also host rest api for retrieving prices.
+- ![img_6.png](img_6.png)

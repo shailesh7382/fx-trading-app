@@ -20,6 +20,7 @@
         <module>fx-auth-rs</module>
         <module>common-data</module>
         <module>fx-rate-publisher</module>
+        <module>fx-pricing-rs</module>
     </modules>
 
     <properties>
