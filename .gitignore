@@ -8,3 +8,4 @@
 /.idea/dictionaries
 /.idea/fx-trading-app.iml
 /.idea/
+/fx-parent-pom/fx-auth-rs/target/
