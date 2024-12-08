@@ -12,3 +12,5 @@
 /fx-parent-pom/fx-rate-publisher/target/
 /fx-parent-pom/common-data/target/
 /fx-parent-pom/fx-pricing-rs/target/
+/fx-parent-pom/fx-trading-ui/fx-trading-app/node_modules/
+/fx-parent-pom/fx-trading-ui/fx-trading-app/build/

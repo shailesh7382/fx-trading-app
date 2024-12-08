@@ -22,3 +22,29 @@ Also host rest api for retrieving prices.
 ![img_6.png](img_6.png)
 - Testing all of it together with DB 
 ![img_7.png](img_7.png)
+- Starting again - We will create a react js ui not to provide for a user login and a rate grid using the built backend services
+![img_8.png](img_8.png)
+- created a demo react app 
+![img_9.png](img_9.png)
+fx-parent-pom/
+├── fx-trading-ui/
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/
+│   │   │   │   └── com/example/fxtradingui/
+│   │   │   │       └── ReactAppController.java
+│   │   │   ├── resources/
+│   │   │   │   └── static/
+│   │   │   │       ├── index.html
+│   │   │   │       ├── static/
+│   │   │   │       ├── asset-manifest.json
+│   │   │   │       ├── manifest.json
+│   │   │   │       ├── robots.txt
+│   │   │   │       └── ...
+│   ├── pom.xml
+│   └── fx-trading-app/
+│       ├── public/
+│       ├── src/
+│       ├── package.json
+│       ├── package-lock.json
+│       └── ...
