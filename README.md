@@ -51,3 +51,5 @@ fx-parent-pom/
 
 - Now login screen linked to server backend and logged in 
 ![img_10.png](img_10.png)
+- Created FX Trading Navigation 
+![img_11.png](img_11.png)

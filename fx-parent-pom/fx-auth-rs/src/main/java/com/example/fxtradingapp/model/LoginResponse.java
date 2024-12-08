@@ -23,17 +23,17 @@ public class LoginResponse {
 
     // Constructor to create LoginResponse from FxUser
     public LoginResponse(FxUser fxUser) {
+       this(fxUser, "Success");
+    }
+
+    // Constructor to create LoginResponse with username and message
+    public LoginResponse(FxUser fxUser, String message) {
         this.username = fxUser.getUsername();
         this.password = fxUser.getPassword();
         this.userType = fxUser.getUserType();
         this.lastLoginTimestamp = fxUser.getLastLoginTimestamp();
         this.email = fxUser.getEmail();
         this.region = fxUser.getRegion();
-    }
-
-    // Constructor to create LoginResponse with username and message
-    public LoginResponse(String username, String message) {
-        this.username = username;
         this.message = message;
     }
 
