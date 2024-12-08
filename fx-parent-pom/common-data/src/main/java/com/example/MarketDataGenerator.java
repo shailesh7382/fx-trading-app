@@ -55,7 +55,7 @@ public class MarketDataGenerator implements AutoCloseable {
                                 "quoteReq_",
                                 "quote_",
                                 "LP_",
-                                "status_",
+                                "ACTIVE",
                                 "SP"
                         );
 
