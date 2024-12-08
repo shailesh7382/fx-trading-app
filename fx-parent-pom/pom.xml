@@ -18,6 +18,7 @@
     <packaging>pom</packaging>
     <modules>
         <module>fx-auth-rs</module>
+        <module>common-data</module>
     </modules>
 
     <properties>
