@@ -51,9 +51,13 @@ fx-parent-pom/
 
 - Now login screen linked to server backend and logged in 
 ![img_10.png](img_10.png)
+
 - Created FX Trading Navigation 
 ![img_11.png](img_11.png)
+
 - Created Menu options and navigation
 ![img_12.png](img_12.png)
+
 - Rate Grid added to retrieve prices from backend service
-- ![img_13.png](img_13.png)
+![img_13.png](img_13.png)
+- OVER and Out for today
