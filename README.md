@@ -9,3 +9,5 @@ To get you started you can simply clone the `fx-trading-app` repository and open
 
 - create a parent pom extending spring  boot. 
 - ![img_1.png](img_1.png)
+- create a child pom for user login and authentication and persistence of user to db 
+- ![img_2.png](img_2.png)
