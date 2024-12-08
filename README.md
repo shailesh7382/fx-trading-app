@@ -53,3 +53,5 @@ fx-parent-pom/
 ![img_10.png](img_10.png)
 - Created FX Trading Navigation 
 ![img_11.png](img_11.png)
+- Created Menu options and navigation
+![img_12.png](img_12.png)

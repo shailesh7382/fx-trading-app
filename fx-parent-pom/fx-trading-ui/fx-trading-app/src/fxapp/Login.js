@@ -1,14 +1,15 @@
 // src/fxapp/Login.js
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import { TextField, Button, Typography, Container, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { UserContext } from './UserProvider';
 
 function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
-
+  const { setUserDetails } = useContext(UserContext);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -16,6 +17,7 @@ function Login() {
     try {
       const loginRequest = { username, password };
       const response = await axios.post('http://localhost:8080/api/login', loginRequest);
+      setUserDetails(response.data);
       sessionStorage.setItem('userDetails', JSON.stringify(response.data));
       setMessage(`Login successful: ${response.data.message}`);
       navigate('/fxtradingapp');

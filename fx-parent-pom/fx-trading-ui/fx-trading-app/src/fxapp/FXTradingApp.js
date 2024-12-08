@@ -1,15 +1,34 @@
 // src/fxapp/FXTradingApp.js
-import React from 'react';
-import { Typography, Container, Box, Drawer, List, ListItem, ListItemText, Divider } from '@mui/material';
+import React, { useState } from 'react';
+import { Typography, Container, Box, Drawer, List, ListItem, ListItemText, Divider, Avatar, ListItemIcon } from '@mui/material';
+import GridViewIcon from '@mui/icons-material/GridView';
+import BookIcon from '@mui/icons-material/Book';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import PortfolioIcon from '@mui/icons-material/AccountBalance';
+import FXRateGrid from './FXRateGrid';
+import FXTradeBooking from './FXTradeBooking';
+import FXTradeBlotter from './FXTradeBlotter';
+import FXMarketAnalysis from './FXMarketAnalysis';
+import FXPortfolio from './FXPortfolio';
 
 function FXTradingApp() {
+  const [selectedComponent, setSelectedComponent] = useState(null);
   const userDetails = JSON.parse(sessionStorage.getItem('userDetails'));
 
   const menuItems = [
-    { text: 'FX Rate Grid', path: '/fxrategrid' },
-    { text: 'FX Trade Booking', path: '/fxtradebooking' },
-    { text: 'FX Trade Blotter', path: '/fxtradeblotter' }
+    { text: 'FX Rate Grid', component: <FXRateGrid />, icon: <GridViewIcon /> },
+    { text: 'FX Trade Booking', component: <FXTradeBooking />, icon: <BookIcon /> },
+    { text: 'FX Trade Blotter', component: <FXTradeBlotter />, icon: <ListAltIcon /> },
+    { text: 'FX Market Analysis', component: <FXMarketAnalysis />, icon: <AssessmentIcon /> },
+    { text: 'FX Portfolio', component: <FXPortfolio />, icon: <PortfolioIcon /> }
   ];
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -21,32 +40,30 @@ function FXTradingApp() {
           [`& .MuiDrawer-paper`]: { width: 240, boxSizing: 'border-box' },
         }}
       >
-        <Box sx={{ overflow: 'auto' }}>
-          <Typography variant="h6" sx={{ p: 2 }}>
-            User Details
+        <Box sx={{ overflow: 'auto', textAlign: 'center', p: 2 }}>
+          <Avatar sx={{ width: 56, height: 56, margin: '0 auto' }}>
+            {userDetails ? userDetails.username.charAt(0).toUpperCase() : 'G'}
+          </Avatar>
+          <Typography variant="h6" sx={{ mt: 2 }}>
+            {userDetails ? userDetails.username : 'Guest'}
           </Typography>
-          <Divider />
-          <List>
-            <ListItem>
-              <ListItemText primary={`Username: ${userDetails.username}`} />
-            </ListItem>
-            <ListItem>
-              <ListItemText primary={`Email: ${userDetails.email}`} />
-            </ListItem>
-            <ListItem>
-              <ListItemText primary={`User Type: ${userDetails.userType}`} />
-            </ListItem>
-            <ListItem>
-              <ListItemText primary={`Last Login: ${userDetails.lastLoginTimestamp}`} />
-            </ListItem>
-            <ListItem>
-              <ListItemText primary={`Region: ${userDetails.region}`} />
-            </ListItem>
-          </List>
-          <Divider />
+          <Typography variant="body2" color="textSecondary">
+            {userDetails ? userDetails.email : 'guest@example.com'}
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            User Type: {userDetails ? userDetails.userType : 'N/A'}
+          </Typography>
+          <Typography variant="caption" color="textSecondary">
+            Last Login: {userDetails ? formatTimestamp(userDetails.lastLoginTimestamp) : 'N/A'}
+          </Typography>
+          <Typography variant="caption" color="textSecondary">
+            Region: {userDetails ? userDetails.region : 'N/A'}
+          </Typography>
+          <Divider sx={{ my: 2 }} />
           <List>
             {menuItems.map((item, index) => (
-              <ListItem button key={index} onClick={() => window.location.href = item.path}>
+              <ListItem button key={index} onClick={() => setSelectedComponent(item.component)}>
+                <ListItemIcon>{item.icon}</ListItemIcon>
                 <ListItemText primary={item.text} />
               </ListItem>
             ))}
@@ -54,10 +71,11 @@ function FXTradingApp() {
         </Box>
       </Drawer>
       <Container maxWidth="md" sx={{ mt: 4, ml: 30 }}>
-        <Typography variant="h4" component="h2" gutterBottom>
-          Welcome to FX Trading App
-        </Typography>
-        {/* Add your FXTradingApp content here */}
+        {selectedComponent || (
+          <Typography variant="h4" component="h2" gutterBottom>
+            Welcome to FX Trading App
+          </Typography>
+        )}
       </Container>
     </Box>
   );
