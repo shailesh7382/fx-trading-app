@@ -1,0 +1,45 @@
+/* src/fxapp/FXApp.css */
+.container {
+  max-width: 100%;
+  display: flex;
+  flex-direction: row;
+  border: 1px solid #ccc; /* Add border to the container */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Add shadow for panel effect */
+  margin-bottom: 16px; /* Add margin to the bottom */
+}
+
+.menu {
+  width: 240px;
+  border-right: 1px solid #ddd;
+  padding: 16px;
+  overflow-y: auto;
+  background-color: #f9f9f9; /* Add background color for panel effect */
+}
+
+.price-up {
+  background-color: #d4edda;
+  transition: background-color 0.5s ease;
+}
+
+.price-down {
+  background-color: #f8d7da;
+  transition: background-color 0.5s ease;
+}
+
+.small-digits {
+  font-size: 0.8em;
+}
+
+.large-digits {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+.fx-rate-grid-container {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.fx-rate-grid {
+  flex-grow: 1;
+}

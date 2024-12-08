@@ -1,6 +1,6 @@
 // src/fxapp/FXTradingApp.js
 import React, { useState } from 'react';
-import { Typography, Container, Box, Drawer, List, ListItem, ListItemText, Divider, Avatar, ListItemIcon } from '@mui/material';
+import { Typography, Box, Drawer, List, ListItem, ListItemText, Divider, Avatar, ListItemIcon } from '@mui/material';
 import GridViewIcon from '@mui/icons-material/GridView';
 import BookIcon from '@mui/icons-material/Book';
 import ListAltIcon from '@mui/icons-material/ListAlt';
@@ -11,6 +11,7 @@ import FXTradeBooking from './FXTradeBooking';
 import FXTradeBlotter from './FXTradeBlotter';
 import FXMarketAnalysis from './FXMarketAnalysis';
 import FXPortfolio from './FXPortfolio';
+import './FXApp.css'; // Import the CSS file
 
 function FXTradingApp() {
   const [selectedComponent, setSelectedComponent] = useState(null);
@@ -31,13 +32,12 @@ function FXTradingApp() {
   };
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box className="container">
       <Drawer
         variant="permanent"
         sx={{
-          width: 240,
           flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: 240, boxSizing: 'border-box' },
+          [`& .MuiDrawer-paper`]: { width: 260, boxSizing: 'border-box' },
         }}
       >
         <Box sx={{ overflow: 'auto', textAlign: 'center', p: 2 }}>
@@ -70,13 +70,13 @@ function FXTradingApp() {
           </List>
         </Box>
       </Drawer>
-      <Container maxWidth="md" sx={{ mt: 4, ml: 30 }}>
+      <Box sx={{ flexGrow: 1, padding: 1, overflowY: 'auto', backgroundColor: '#fff' }}>
         {selectedComponent || (
           <Typography variant="h4" component="h2" gutterBottom>
             Welcome to FX Trading App
           </Typography>
         )}
-      </Container>
+      </Box>
     </Box>
   );
 }

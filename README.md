@@ -22,7 +22,7 @@ Also host rest api for retrieving prices.
 ![img_6.png](img_6.png)
 - Testing all of it together with DB 
 ![img_7.png](img_7.png)
-- Starting again - We will create a react js ui not to provide for a user login and a rate grid using the built backend services
+- <BREAK> Starting again - We will create a react js ui not to provide for a user login and a rate grid using the built backend services
 ![img_8.png](img_8.png)
 - created a demo react app 
 ![img_9.png](img_9.png)
@@ -55,3 +55,5 @@ fx-parent-pom/
 ![img_11.png](img_11.png)
 - Created Menu options and navigation
 ![img_12.png](img_12.png)
+- Rate Grid added to retrieve prices from backend service
+- ![img_13.png](img_13.png)
