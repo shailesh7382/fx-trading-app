@@ -18,7 +18,7 @@ function FXTradingApp() {
   const userDetails = JSON.parse(sessionStorage.getItem('userDetails'));
 
   const menuItems = [
-    { text: 'FX Rate Grid', component: <FXRateGrid />, icon: <GridViewIcon /> },
+    { text: 'FX Rate Grid', component: <FXRateGrid setSelectedComponent={setSelectedComponent} />, icon: <GridViewIcon /> },
     { text: 'FX Trade Booking', component: <FXTradeBooking />, icon: <BookIcon /> },
     { text: 'FX Trade Blotter', component: <FXTradeBlotter />, icon: <ListAltIcon /> },
     { text: 'FX Market Analysis', component: <FXMarketAnalysis />, icon: <AssessmentIcon /> },
@@ -32,19 +32,19 @@ function FXTradingApp() {
   };
 
   return (
-    <Box className="container">
+    <Box className="container" sx={{ gap: 0 }}> {/* Remove gap */}
       <Drawer
         variant="permanent"
         sx={{
           flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: 260, boxSizing: 'border-box' },
+          [`& .MuiDrawer-paper`]: { width: 240, boxSizing: 'border-box' }, // Adjusted width
         }}
       >
-        <Box sx={{ overflow: 'auto', textAlign: 'center', p: 2 }}>
-          <Avatar sx={{ width: 56, height: 56, margin: '0 auto' }}>
+        <Box sx={{ overflow: 'auto', textAlign: 'center', p: 1 }}> {/* Reduced padding */}
+          <Avatar sx={{ width: 48, height: 48, margin: '0 auto' }}> {/* Reduced size */}
             {userDetails ? userDetails.username.charAt(0).toUpperCase() : 'G'}
           </Avatar>
-          <Typography variant="h6" sx={{ mt: 2 }}>
+          <Typography variant="h6" sx={{ mt: 1 }}> {/* Reduced margin */}
             {userDetails ? userDetails.username : 'Guest'}
           </Typography>
           <Typography variant="body2" color="textSecondary">
@@ -59,7 +59,7 @@ function FXTradingApp() {
           <Typography variant="caption" color="textSecondary">
             Region: {userDetails ? userDetails.region : 'N/A'}
           </Typography>
-          <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 1 }} /> {/* Reduced margin */}
           <List>
             {menuItems.map((item, index) => (
               <ListItem button key={index} onClick={() => setSelectedComponent(item.component)}>

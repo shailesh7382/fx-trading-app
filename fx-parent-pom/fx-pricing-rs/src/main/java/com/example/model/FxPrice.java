@@ -1,6 +1,9 @@
 package com.example.model;
 
 import javax.persistence.*;
+
+import com.example.Tenor;
+
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -126,6 +129,10 @@ public class FxPrice implements Serializable {
 
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public String getTenorLabel() {
+        return tenor.getLabel();
     }
 
     @Override

@@ -3,6 +3,8 @@ package com.example.model;
 import java.io.Serializable;
 import java.util.Objects;
 
+import com.example.Tenor;
+
 public class FxPriceId implements Serializable {
 
     private String ccyPair;

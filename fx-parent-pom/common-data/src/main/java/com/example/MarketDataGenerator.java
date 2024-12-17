@@ -28,39 +28,38 @@ public class MarketDataGenerator implements AutoCloseable {
         executorService.submit(() -> {
             while (running) {
                 try {
-                    Thread.sleep(1000L);
+                    Thread.sleep(500L);
                     for (int i = 0; i < 3; i++) {
-
                         String ccyPair = ccyPairs.get(random.nextInt(ccyPairs.size()));
                         LocalDateTime currentDate = LocalDateTime.now();
-
                         double bidPrice = getLatestBidPrice(ccyPair);
                         double askPrice = getLatestAskPrice(ccyPair);
                         int decimalPlaces = getDecimalPlaces(ccyPair);
-
                         List<Double> amountBands = generateRandomAmountBands();
                         List<Double> bidPrices = generatePrices(bidPrice, amountBands.size(), true, decimalPlaces);
                         List<Double> askPrices = generatePrices(askPrice, amountBands.size(), false, decimalPlaces);
-                        List<Double> bidPoints = generatePoints(amountBands.size());
-                        List<Double> askPoints = generatePoints(amountBands.size());
 
-                        MarketData md = new MarketData(
-                                currentDate,
-                                ccyPair,
-                                bidPrices,
-                                askPrices,
-                                amountBands,
-                                bidPoints,
-                                askPoints,
-                                "quoteReq_",
-                                "quote_",
-                                "MQ",
-                                "ACTIVE",
-                                "SP"
-                        );
+                        for (Tenor tenor : Tenor.values()) {
+                            List<Double> bidPoints = tenor == Tenor.SP ? generateZeroPoints(amountBands.size()) : generatePoints(amountBands.size());
+                            List<Double> askPoints = tenor == Tenor.SP ? generateZeroPoints(amountBands.size()) : generatePoints(amountBands.size());
 
-                        listener.onMarketDataUpdate(md);
+                            MarketData md = new MarketData(
+                                    currentDate,
+                                    ccyPair,
+                                    bidPrices,
+                                    askPrices,
+                                    amountBands,
+                                    bidPoints,
+                                    askPoints,
+                                    "quoteReq_",
+                                    "quote_",
+                                    "MQ",
+                                    "ACTIVE",
+                                    tenor.name()
+                            );
 
+                            listener.onMarketDataUpdate(md);
+                        }
                     }
                 } catch (Exception e) {
                     Thread.currentThread().interrupt();
@@ -234,6 +233,14 @@ public class MarketDataGenerator implements AutoCloseable {
         List<Double> points = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             points.add(Math.round(random.nextDouble() * 0.01 * 100000.0) / 100000.0);
+        }
+        return points;
+    }
+
+    private List<Double> generateZeroPoints(int size) {
+        List<Double> points = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            points.add(0.0);
         }
         return points;
     }

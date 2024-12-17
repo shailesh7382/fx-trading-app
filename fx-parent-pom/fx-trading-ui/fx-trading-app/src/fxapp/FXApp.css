@@ -3,9 +3,11 @@
   max-width: 100%;
   display: flex;
   flex-direction: row;
-  border: 1px solid #ccc; /* Add border to the container */
+  /* border: 1px solid #ccc; */ /* Remove border from the container */
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Add shadow for panel effect */
   margin-bottom: 16px; /* Add margin to the bottom */
+  background-color: rgba(255, 255, 255, 0.9); /* Add a semi-transparent background */
+  gap: 20px; /* Ensure the space between panels is not more than 20px */
 }
 
 .menu {
@@ -13,7 +15,7 @@
   border-right: 1px solid #ddd;
   padding: 16px;
   overflow-y: auto;
-  background-color: #f9f9f9; /* Add background color for panel effect */
+  background-color: rgba(0, 0, 255, 0.9); /* Change background color to blue with semi-transparency */
 }
 
 .price-up {
@@ -34,12 +36,271 @@
   font-size: 1.2em;
   font-weight: bold;
 }
+
 .fx-rate-grid-container {
   display: flex;
   flex-direction: column;
   flex-grow: 1;
+  align-items: flex-start; /* Align the rate grid container to the left */
 }
 
 .fx-rate-grid {
   flex-grow: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: flex-start; /* Align the rate grid to the left */
+}
+
+.fx-rate-grid-panel {
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  padding: 8px; /* Reduce padding */
+  background-color: #f9f9f9; /* Change background color to a lighter shade */
+  border-radius: 8px; /* Add rounded borders */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fx-rate-grid-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px; /* Reduce margin */
+  color: #333; /* Adjust font color for better contrast */
+}
+
+.fx-rate-cell {
+  border: 1px solid #ddd; /* Lighter border color */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); /* Softer shadow */
+  padding: 4px; /* Reduce padding */
+  width: 200px; /* Reduce width */
+  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 8px; /* Add rounded borders */
+}
+
+.fx-rate-cell-header {
+  font-weight: bold;
+  margin-bottom: 2px; /* Reduce margin */
+  color: #555; /* Softer font color */
+}
+
+.fx-rate-cell-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px; /* Reduce gap */
+}
+
+.fx-rate-box {
+  border: 1px solid #ddd; /* Lighter border color */
+  padding: 1px; /* Further tighten padding */
+  border-radius: 8px; /* Add rounded borders */
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  font-size: 1em; /* Reduce font size */
+  width: 140px; /* Reduce width */
+  height: 80px; /* Reduce height */
+  display: flex; /* Center align content */
+  align-items: center; /* Center align content */
+  justify-content: center; /* Center align content */
+  font-family: inherit;
+  color: #333; /* Adjust font color for better contrast */
+  position: relative; /* For hover text positioning */
+  background: linear-gradient(to bottom, #f0f0f0, #d9d9d9); /* Add light grey gradient */
+}
+
+.fx-rate-box:hover {
+  background: radial-gradient(circle, #87ceeb, #1e90ff); /* Change hover color to radial gradient */
+  color: #fff; /* Adjust font color for better contrast */
+}
+
+.fx-rate-box:hover::after {
+  content: attr(data-hover-text); /* Hover text from data attribute */
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+
+.fx-rate-box-bid {
+  border: 1px solid #ddd; /* Lighter border color */
+  padding: 1px; /* Further tighten padding */
+  border-radius: 8px 8px 32px 8px; /* Bigger bottom right radius */
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  font-size: 1em; /* Reduce font size */
+  width: 140px; /* Reduce width */
+  height: 80px; /* Reduce height */
+  display: flex; /* Center align content */
+  align-items: center; /* Center align content */
+  justify-content: center; /* Center align content */
+  font-family: inherit;
+  color: #333; /* Adjust font color for better contrast */
+  position: relative; /* For hover text positioning */
+  background: linear-gradient(to bottom, #f0f0f0, #d9d9d9); /* Add light grey gradient */
+}
+
+.fx-rate-box-ask {
+  border: 1px solid #ddd; /* Lighter border color */
+  padding: 1px; /* Further tighten padding */
+  border-radius: 8px 8px 8px 32px; /* Bigger bottom left radius */
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  font-size: 1em; /* Reduce font size */
+  width: 140px; /* Reduce width */
+  height: 80px; /* Reduce height */
+  display: flex; /* Center align content */
+  align-items: center; /* Center align content */
+  justify-content: center; /* Center align content */
+  font-family: inherit;
+  color: #333; /* Adjust font color for better contrast */
+  position: relative; /* For hover text positioning */
+  background: linear-gradient(to bottom, #f0f0f0, #d9d9d9); /* Add light grey gradient */
+}
+
+.fx-rate-box span {
+  display: inline-block;
+  vertical-align: baseline; /* Align to baseline */
+}
+
+.fx-rate-time {
+  font-size: 0.75em;
+  color: #888;
+  text-align: right;
+  margin-top: auto;
+}
+
+.fx-rate-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px; /* Reduce gap */
+}
+
+.fx-tenor {
+  flex: 1;
+  font-size: 0.7em; /* Reduce font size */
+}
+
+.fx-quantity {
+  flex: 3;
+  text-align: right;
+  font-size: 0.9em; /* Reduce font size */
+  color: #555; /* Softer font color */
+}
+
+.quantity-input {
+  min-height: 15px;
+  font-size: 0.60em;
+  width: 60px;
+  color: #555; /* Softer font color */
+  padding: 0px; /* Reduce padding */
+  border: none; /* Remove border */
+  margin-top: 0px; /* Reduce vertical margin */
+  margin-bottom: 0px; /* Reduce vertical margin */
+  text-align: right; /* Right align text */
+}
+
+.fx-dealt-currency {
+  cursor: pointer;
+  font-size: 0.60em;
+  color: #555; /* Softer font color */
+  margin-left: 1px; /* Add some space between quantity and dealt currency */
+  display: flex;
+  align-items: center; /* Align to center */
+  text-align: right; /* Right align text */
+}
+
+.fx-spr-text {
+  font-size: 0.60em;
+  color: #555; /* Softer font color */
+  align-self: flex-end; /* Align to bottom */
+  margin-bottom: 4px; /* Adjust margin to position text */
+}
+
+.fx-triangle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 0; /* Remove margin for no gap */
+}
+
+.detail-square {
+  width: 200px; /* Fixed width */
+  height: 200px; /* Fixed height */
+  background-color: #f9f9f9; /* Light grey background color */
+  border: 1px solid #ccc; /* Light grey border */
+  position: relative; /* Relative positioning for the pseudo-element */
+  margin-top: 10px; /* Top margin */
+  border-radius: 8px; /* Rounded corners */
+}
+
+.detail-square::after {
+  content: '1.01'; /* Label content */
+  position: absolute; /* Absolute positioning within the relative parent */
+  bottom: 0; /* Positioned at the bottom */
+  right: 0; /* Positioned at the right */
+  width: 50px; /* Width of the triangular cut-out */
+  height: 50px; /* Height of the triangular cut-out */
+  background-color: #87ceeb; /* Change to light blue color */
+  border-top: 3px solid #ccc; /* Top border */
+  border-left: 3px solid #ccc; /* Left border */
+  clip-path: polygon(100% 0, 0 100%, 100% 100%); /* Triangular shape */
+  display: flex; /* Flexbox for centering text */
+  align-items: end; /* Center align text vertically */
+  justify-content: end; /* Center align text horizontally */
+  font-size: 0.60em; /* Adjust font size */
+  color: #333; /* Text color */
+}
+
+.detail-square-left {
+  width: 200px; /* Fixed width */
+  height: 200px; /* Fixed height */
+  background-color: #f9f9f9; /* Light grey background color */
+  border: 1px solid #ccc; /* Light grey border */
+  position: relative; /* Relative positioning for the pseudo-element */
+  margin-top: 10px; /* Top margin */
+  border-radius: 8px; /* Rounded corners */
+}
+
+.detail-square-left::after {
+  content: '1.01'; /* Label content */
+  position: absolute; /* Absolute positioning within the relative parent */
+  bottom: 0; /* Positioned at the bottom */
+  left: 0; /* Positioned at the left */
+  width: 50px; /* Width of the triangular cut-out */
+  height: 50px; /* Height of the triangular cut-out */
+  background-color: #87ceeb; /* Change to light blue color */
+  border-top: 3px solid #ccc; /* Top border */
+  border-right: 3px solid #ccc; /* Right border */
+  clip-path: polygon(0 0, 100% 100%, 0 100%); /* Triangular shape */
+  display: flex; /* Flexbox for centering text */
+  align-items: end; /* Center align text vertically */
+  justify-content: end; /* Center align text horizontally */
+  font-size: 0.60em; /* Adjust font size */
+  color: #333; /* Text color */
+}
+
+.detail-square-connector {
+  position: absolute;
+  bottom: 0;
+  left: calc(50% - 25px); /* Adjust position to align with the cut-outs */
+  width: 0;
+  height: 0;
+  border-left: 25px solid transparent;
+  border-right: 25px solid transparent;
+  border-top: 25px solid #87ceeb; /* Same color as the cut-outs */
+}
+
+.detail-content {
+  padding: 10px;
 }
