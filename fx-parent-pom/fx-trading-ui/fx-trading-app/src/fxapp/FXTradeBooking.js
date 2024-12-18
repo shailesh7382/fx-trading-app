@@ -1,7 +1,9 @@
 // src/fxapp/FXTradeBooking.js
 import React, { useContext, useState, useEffect } from 'react';
-import { Typography, Container, Box, TextField, Button, Grid, Divider, Paper } from '@mui/material';
+import { Typography, Container, Box, TextField, Button, Grid, Divider, Paper, MenuItem, LinearProgress } from '@mui/material';
 import UserContext from './UserContext';
+import BookIcon from '@mui/icons-material/Book';
+import axios from 'axios';
 
 const DetailSquare = ({ price }) => (
   <div className="detail-square">
@@ -30,12 +32,12 @@ const DetailSquareLeft = ({ price }) => (
 function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
   const userDetails = JSON.parse(sessionStorage.getItem('userDetails'));
   const [formData, setFormData] = useState({
-    ccyPair: fxPrice.ccyPair,
-    tenor: fxPrice.tenor,
-    qty: fxPrice.qty,
-    price: isBid ? fxPrice.bid : fxPrice.ask,
-    direction: isBid ? 'Sell' : 'Buy',
-    dealtCurrency: dealtCurrency || 'base',
+    ccyPair: fxPrice ? fxPrice.ccyPair : '',
+    tenor: fxPrice ? fxPrice.tenor : '',
+    qty: fxPrice ? fxPrice.qty : '',
+    price: fxPrice ? (isBid ? fxPrice.bid : fxPrice.ask) : '',
+    direction: fxPrice ? (isBid ? 'Sell' : 'Buy') : '',
+    dealtCurrency: fxPrice ? dealtCurrency || 'base' : '',
     customer: '',
     rm: '',
     sales: '',
@@ -43,35 +45,79 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
     settlementDate: '',
     comments: ''
   });
+  const [timer, setTimer] = useState(30);
+  const [isBookingDisabled, setIsBookingDisabled] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [relationshipManagers, setRelationshipManagers] = useState([]);
+  const [sales, setSales] = useState([]);
 
   useEffect(() => {
-    const calculateSettlementDate = (tradeDate) => {
-      const date = new Date(tradeDate);
-      let daysToAdd = 2;
-      while (daysToAdd > 0) {
-        date.setDate(date.getDate() + 1);
-        if (date.getDay() !== 0 && date.getDay() !== 6) {
-          daysToAdd--;
-        }
+    const fetchOptions = async () => {
+      try {
+        const customersResponse = await axios.get('http://localhost:8081/api/customers');
+        const rmsResponse = await axios.get('http://localhost:8081/api/relationshipManagers');
+        const salesResponse = await axios.get('http://localhost:8081/api/sales');
+        setCustomers(customersResponse.data.length ? customersResponse.data : [{ id: 1, name: 'Lorem Customer' }]);
+        setRelationshipManagers(rmsResponse.data.length ? rmsResponse.data : [{ id: 1, name: 'Lorem RM' }]);
+        setSales(salesResponse.data.length ? salesResponse.data : [{ id: 1, name: 'Lorem Sales' }]);
+      } catch (error) {
+        console.error('Error fetching options:', error);
+        setCustomers([{ id: 1, name: 'Lorem Customer' }]);
+        setRelationshipManagers([{ id: 1, name: 'Lorem RM' }]);
+        setSales([{ id: 1, name: 'Lorem Sales' }]);
       }
-      return date.toISOString().split('T')[0];
     };
 
-    setFormData((prevFormData) => ({
-      ...prevFormData,
-      settlementDate: calculateSettlementDate(prevFormData.tradeDate)
-    }));
-  }, [formData.tradeDate]);
+    fetchOptions();
+  }, []);
+
+  useEffect(() => {
+    if (fxPrice) {
+      const calculateSettlementDate = (tradeDate) => {
+        const date = new Date(tradeDate);
+        let daysToAdd = 2;
+        while (daysToAdd > 0) {
+          date.setDate(date.getDate() + 1);
+          if (date.getDay() !== 0 && date.getDay() !== 6) {
+            daysToAdd--;
+          }
+        }
+        return date.toISOString().split('T')[0];
+      };
+
+      setFormData((prevFormData) => ({
+        ...prevFormData,
+        settlementDate: calculateSettlementDate(prevFormData.tradeDate)
+      }));
+
+      const countdown = setInterval(() => {
+        setTimer((prevTimer) => {
+          if (prevTimer <= 1) {
+            clearInterval(countdown);
+            setIsBookingDisabled(true);
+            return 0;
+          }
+          return prevTimer - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(countdown);
+    }
+  }, [formData.tradeDate, fxPrice]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle form submission logic here
-    console.log('Form data submitted:', formData);
+    try {
+      const response = await axios.post('http://localhost:8081/api/bookTrade', formData);
+      console.log('Trade booked successfully:', response.data);
+    } catch (error) {
+      console.error('Error booking trade:', error);
+    }
   };
 
   const getDealtCurrencyDisplay = () => {
@@ -81,7 +127,7 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
   };
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
+    <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Typography variant="h4" component="h2" gutterBottom>
         FX Trade Booking
       </Typography>
@@ -102,8 +148,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               name="ccyPair"
               value={formData.ccyPair}
               onChange={handleChange}
-              disabled
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              disabled={!!fxPrice}
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
@@ -114,8 +160,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               name="tenor"
               value={formData.tenor}
               onChange={handleChange}
-              disabled
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              disabled={!!fxPrice}
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
@@ -126,8 +172,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               name="direction"
               value={formData.direction}
               onChange={handleChange}
-              disabled
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              disabled={!!fxPrice}
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
@@ -138,8 +184,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               name="qty"
               value={formData.qty}
               onChange={handleChange}
-              disabled
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              disabled={!!fxPrice}
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
@@ -150,8 +196,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               name="dealtCurrency"
               value={getDealtCurrencyDisplay()}
               onChange={handleChange}
-              disabled
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              disabled={!!fxPrice}
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
@@ -162,8 +208,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               name="price"
               value={formData.price}
               onChange={handleChange}
-              disabled
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              disabled={!!fxPrice}
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
@@ -176,8 +222,8 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               value={formData.settlementDate}
               onChange={handleChange}
               InputLabelProps={{ shrink: true, style: { fontSize: '0.8em' } }}
-              InputProps={{ style: { fontSize: '0.8em' } }}
-              disabled
+              InputProps={{ style: { fontSize: '0.8em', height: '30px' } }}
+              disabled={!!fxPrice}
             />
           </Grid>
         </Grid>
@@ -188,36 +234,57 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
         <Grid container spacing={1}>
           <Grid item xs={12} sm={6}>
             <TextField
+              select
               fullWidth
               label="Customer"
               name="customer"
               value={formData.customer}
               onChange={handleChange}
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              InputProps={{ style: { fontSize: '0.8em', height: '35px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
-            />
+            >
+              {customers.map((customer) => (
+                <MenuItem key={customer.id} value={customer.name}>
+                  {customer.name}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
+              select
               fullWidth
               label="Relationship Manager"
               name="rm"
               value={formData.rm}
               onChange={handleChange}
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              InputProps={{ style: { fontSize: '0.8em', height: '35px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
-            />
+            >
+              {relationshipManagers.map((rm) => (
+                <MenuItem key={rm.id} value={rm.name}>
+                  {rm.name}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
+              select
               fullWidth
               label="Sales"
               name="sales"
               value={formData.sales}
               onChange={handleChange}
-              InputProps={{ style: { fontSize: '0.8em' } }}
+              InputProps={{ style: { fontSize: '0.8em', height: '35px' } }}
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
-            />
+            >
+              {sales.map((sale) => (
+                <MenuItem key={sale.id} value={sale.name}>
+                  {sale.name}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid item xs={12}>
             <TextField
@@ -232,10 +299,30 @@ function FXTradeBooking({ fxPrice, isBid, dealtCurrency }) {
               InputLabelProps={{ style: { fontSize: '0.8em' } }}
             />
           </Grid>
-          <Grid item xs={12}>
-            <Button type="submit" variant="contained" color="primary" sx={{ fontSize: '0.8em' }}>
-              Submit
+          <Grid item xs={12} sx={{ textAlign: 'center' }}>
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              sx={{ fontSize: '0.8em' }}
+              startIcon={<BookIcon />}
+              disabled={isBookingDisabled}
+            >
+              Book Trade
             </Button>
+            {isBookingDisabled && (
+              <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                Booking disabled. Please reprice the trade.
+              </Typography>
+            )}
+            {!isBookingDisabled && (
+              <Box sx={{ width: '100%', mt: 2 }}>
+                <LinearProgress variant="determinate" value={(timer / 30) * 100} />
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Time left to book: {timer} seconds
+                </Typography>
+              </Box>
+            )}
           </Grid>
         </Grid>
       </Box>
