@@ -234,60 +234,44 @@
   margin: 0; /* Remove margin for no gap */
 }
 
-.detail-square {
-  width: 200px; /* Fixed width */
-  height: 200px; /* Fixed height */
-  background-color: #f9f9f9; /* Light grey background color */
-  border: 1px solid #ccc; /* Light grey border */
+.detail-square, .detail-square-left {
+  width: 220px; /* Increased width */
+  height: 220px; /* Increased height */
+  background-color: #ffffff; /* White background color */
+  border: 2px solid #ccc; /* Slightly darker border */
   position: relative; /* Relative positioning for the pseudo-element */
   margin-top: 10px; /* Top margin */
-  border-radius: 8px; /* Rounded corners */
+  border-radius: 12px; /* More rounded corners */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Add shadow for depth */
+  overflow: hidden; /* Hide overflow */
+}
+
+.detail-square::after, .detail-square-left::after {
+  content: '1.01'; /* Label content */
+  position: absolute; /* Absolute positioning within the relative parent */
+  bottom: 0; /* Positioned at the bottom */
+  width: 50px; /* Width of the triangular cut-out */
+  height: 50px; /* Height of the triangular cut-out */
+  background-color: #87ceeb; /* Light blue color */
+  display: flex; /* Flexbox for centering text */
+  align-items: center; /* Center align text vertically */
+  justify-content: center; /* Center align text horizontally */
+  font-size: 0.75em; /* Adjust font size */
+  color: #333; /* Text color */
 }
 
 .detail-square::after {
-  content: '1.01'; /* Label content */
-  position: absolute; /* Absolute positioning within the relative parent */
-  bottom: 0; /* Positioned at the bottom */
   right: 0; /* Positioned at the right */
-  width: 50px; /* Width of the triangular cut-out */
-  height: 50px; /* Height of the triangular cut-out */
-  background-color: #87ceeb; /* Change to light blue color */
   border-top: 3px solid #ccc; /* Top border */
   border-left: 3px solid #ccc; /* Left border */
   clip-path: polygon(100% 0, 0 100%, 100% 100%); /* Triangular shape */
-  display: flex; /* Flexbox for centering text */
-  align-items: end; /* Center align text vertically */
-  justify-content: end; /* Center align text horizontally */
-  font-size: 0.60em; /* Adjust font size */
-  color: #333; /* Text color */
-}
-
-.detail-square-left {
-  width: 200px; /* Fixed width */
-  height: 200px; /* Fixed height */
-  background-color: #f9f9f9; /* Light grey background color */
-  border: 1px solid #ccc; /* Light grey border */
-  position: relative; /* Relative positioning for the pseudo-element */
-  margin-top: 10px; /* Top margin */
-  border-radius: 8px; /* Rounded corners */
 }
 
 .detail-square-left::after {
-  content: '1.01'; /* Label content */
-  position: absolute; /* Absolute positioning within the relative parent */
-  bottom: 0; /* Positioned at the bottom */
   left: 0; /* Positioned at the left */
-  width: 50px; /* Width of the triangular cut-out */
-  height: 50px; /* Height of the triangular cut-out */
-  background-color: #87ceeb; /* Change to light blue color */
   border-top: 3px solid #ccc; /* Top border */
   border-right: 3px solid #ccc; /* Right border */
   clip-path: polygon(0 0, 100% 100%, 0 100%); /* Triangular shape */
-  display: flex; /* Flexbox for centering text */
-  align-items: end; /* Center align text vertically */
-  justify-content: end; /* Center align text horizontally */
-  font-size: 0.60em; /* Adjust font size */
-  color: #333; /* Text color */
 }
 
 .detail-square-connector {
@@ -302,5 +286,15 @@
 }
 
 .detail-content {
-  padding: 10px;
+  padding: 20px; /* Increased padding */
+  font-size: 0.9em; /* Slightly larger font size */
+  color: #333; /* Darker text color */
+}
+
+.detail-content div {
+  margin-bottom: 8px; /* Space between lines */
+}
+
+.detail-content div:last-child {
+  margin-bottom: 0; /* Remove margin from last item */
 }

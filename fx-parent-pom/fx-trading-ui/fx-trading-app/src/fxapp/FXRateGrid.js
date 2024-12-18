@@ -97,7 +97,7 @@ function FXRateGrid({ setSelectedComponent }) {
   };
 
   const handleCellClick = (params, isBid) => {
-    setSelectedComponent(<FXTradeBooking fxPrice={params.data} isBid={isBid} />);
+    setSelectedComponent(<FXTradeBooking fxPrice={params.data} isBid={isBid} dealtCurrency={params.data.dealtCurrency} />);
   };
 
   const downloadExcel = () => {
@@ -212,10 +212,6 @@ function FXRateGrid({ setSelectedComponent }) {
                     menu: (provided) => ({ ...provided, fontSize: '0.60em' })
                   }}
                 />
-                <div className="fx-triangle">
-                  <TriangleUp />
-                  <TriangleDown />
-                </div>
                 <InputMask
                   mask="9999999"
                   value={price.qty}
