@@ -1,57 +1,109 @@
-# fx-trading-app
+# FX Trading App
 
-FX Trading application that streams FX rates and allows users to trade.
+This repository contains a multi-service FX trading demo stack:
 
-The platform is built with Spring Boot services, a React UI, ActiveMQ for streaming market data, and H2 Database for persistence. The project uses Maven (Java modules) and npm (UI module).
+- `fx-parent-pom/fx-auth-rs` — authentication service and H2 TCP server
+- `fx-parent-pom/fx-rate-publisher` — market data publisher and embedded ActiveMQ broker
+- `fx-parent-pom/fx-pricing-rs` — pricing API and JMS subscriber
+- `fx-parent-pom/fx-trading-ui/fx-trading-app` — Vite-based React trading UI
 
-## Getting Started
+## Full-stack startup scripts
 
-Clone the repository and open it in IntelliJ IDEA.
+The repository now includes managed bash scripts with exhaustive logs, PID tracking, and port checks under `scripts/`.
 
-## Development Progress (Screenshots)
+### Start everything
 
-> All screenshots are now organized under `images/`.
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/start-full-stack.sh
+```
 
-Initial setup
-![Initial setup](images/img.png)
+### Start everything in production-oriented mode
 
-Created parent POM extending Spring Boot
-![Parent POM](images/img_1.png)
+This builds the Vite UI and serves `dist/` through a lightweight SPA-aware static server instead of using the Vite dev server.
 
-Created auth service module and DB persistence for users
-![Auth service module](images/img_2.png)
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/start-full-stack-prod.sh
+```
 
-`fx-auth-rs` running with login and persistence
-![Auth service running](images/img_3.png)
+### Check status
 
-Created common market data generator for 30 currency pairs
-![Common market data](images/img_4.png)
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/status-full-stack.sh
+```
 
-Created ActiveMQ publisher streaming market data every 500ms for 28 pairs
-![MQ publisher](images/img_5.png)
+### Follow current logs
 
-Created `fx-pricing-rs` subscriber, DB persistence, and REST API for prices
-![Pricing service](images/img_6.png)
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/tail-logs.sh
+```
 
-Integrated backend services with database
-![Backend integration](images/img_7.png)
+### Stop everything
 
-Started React UI development for login and rate grid
-![UI start](images/img_8.png)
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/stop-full-stack.sh
+```
 
-Created demo React app
-![React demo app](images/img_9.png)
+## Runtime prerequisites
 
-Connected login screen to backend authentication
-![Login integration](images/img_10.png)
+The scripts expect these commands to be available on your machine:
 
-Created FX trading navigation
-![Navigation](images/img_11.png)
+- `java`
+- `mvn`
+- `node`
+- `npm`
+- `lsof`
 
-Added menu options and navigation flow
-![Menu and navigation](images/img_12.png)
+## What the startup flow does
 
-Added rate grid fetching prices from backend service
-![Rate grid](images/img_13.png)
+The `scripts/start-full-stack.sh` script:
 
-Done for the day.
+1. verifies required tooling
+2. creates a timestamped log directory under `logs/runs/`
+3. installs UI dependencies if `node_modules/` is missing
+4. starts services in dependency order:
+   - auth (`8080`, H2 TCP on `9092`)
+   - rate publisher / ActiveMQ (`61616`)
+   - pricing (`8081`)
+   - trading UI (`5173`)
+5. waits for each required port before continuing
+6. stores per-service PID files under `.runtime/`
+
+## Production-oriented UI serving
+
+`scripts/start-full-stack-prod.sh` performs the same backend startup flow, but it also:
+
+1. runs `npm run build` inside `fx-parent-pom/fx-trading-ui/fx-trading-app`
+2. serves the built files from `dist/` using `scripts/serve-ui-dist.mjs`
+3. keeps SPA route fallback behavior by returning `index.html` for unknown frontend paths
+4. writes UI build and HTTP access logs into the current run directory
+
+## Same-origin API access for auth and pricing
+
+The UI now uses same-origin API base paths by default:
+
+- `/auth-api/...` → proxied to `http://localhost:8080/api/...`
+- `/pricing-api/...` → proxied to `http://localhost:8081/api/...`
+
+This avoids browser cross-origin API calls from the UI and helps prevent confusing network entries like `strict-origin-when-cross-origin` when using the local frontend.
+
+- In dev mode, the Vite dev server proxies these paths.
+- In production-oriented mode, `scripts/serve-ui-dist.mjs` proxies the same paths.
+
+## Log layout
+
+Each start run creates a fresh directory like:
+
+- `logs/runs/<timestamp>/startup.log`
+- `logs/runs/<timestamp>/auth.log`
+- `logs/runs/<timestamp>/publisher.log`
+- `logs/runs/<timestamp>/pricing.log`
+- `logs/runs/<timestamp>/ui.log`
+- `logs/runs/<timestamp>/ui-bootstrap.log` (only when `npm install` runs)
+
+`logs/current` points to the latest run.
+

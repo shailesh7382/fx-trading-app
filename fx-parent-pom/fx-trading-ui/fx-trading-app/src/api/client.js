@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:8080/api';
-const PRICING_API_URL = import.meta.env.VITE_PRICING_API_URL || 'http://localhost:8081/api';
+const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || '/auth-api';
+const PRICING_API_URL = import.meta.env.VITE_PRICING_API_URL || '/pricing-api';
 
 const authApi = axios.create({
   baseURL: AUTH_API_URL,
