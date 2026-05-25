@@ -1,70 +1,85 @@
-# Getting Started with Create React App
+# FX Trading Workspace UI
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This frontend has been upgraded from Create React App to **Vite** and redesigned into a more polished, mobile-ready FX trading workspace.
 
-## Available Scripts
+## What changed
 
-In the project directory, you can run:
+### Review summary of the old UI
 
-### `npm start`
+- The app shell was tied to a desktop-only permanent drawer and did not scale well on mobile.
+- The workflow between rates, booking, blotter, analysis, and portfolio was fragmented.
+- Login, rate monitoring, and booking states were tightly coupled to direct component state with minimal resilience.
+- The CRA toolchain and older dependency set added weight without improving the runtime UX.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Upgrade summary
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- Migrated from **Create React App** to **Vite 8**
+- Upgraded the main libraries to current versions of **React 19**, **React Router 7**, **MUI 9**, **Emotion**, and **Axios**
+- Replaced the old placeholder pages with a responsive trading workspace flow
+- Added a resilient **demo mode** and **local trade capture fallback** so the UI remains reviewable if services are offline
+- Added **Vitest** + **Testing Library** for frontend verification
 
-### `npm test`
+## UX flow now included
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- **Login / demo entry**
+- **Dashboard overview** with workspace metrics and next actions
+- **Live rate cards** with search, filters, export, and one-tap booking
+- **Structured trade ticket** with quote expiry, repricing, and coverage fields
+- **Trade blotter** with KPIs, filters, and export
+- **Market analysis** view driven by current feed conditions
+- **Portfolio** view with derived exposures and customer concentration
 
-### `npm run build`
+## Environment variables
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Copy `.env.example` to `.env` if you want to override the defaults.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```bash
+cp .env.example .env
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Available variables:
 
-### `npm run eject`
+- `VITE_AUTH_API_URL` — defaults to `http://localhost:8080/api`
+- `VITE_PRICING_API_URL` — defaults to `http://localhost:8081/api`
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Scripts
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+npm install
+npm run dev
+npm run build
+npm run preview
+npm test
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Local development
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app/fx-parent-pom/fx-trading-ui/fx-trading-app"
+npm install
+npm run dev
+```
 
-## Learn More
+Vite serves the app on `http://localhost:5173` by default.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Production build
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app/fx-parent-pom/fx-trading-ui/fx-trading-app"
+npm run build
+npm run preview
+```
 
-### Code Splitting
+The production output is generated in `dist/`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Test
 
-### Analyzing the Bundle Size
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app/fx-parent-pom/fx-trading-ui/fx-trading-app"
+npm test
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Notes
 
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- When backend services are reachable, the UI will use live auth and pricing endpoints.
+- When pricing or booking endpoints are unavailable, the app falls back to demo liquidity and local trade persistence to keep the full UX flow usable.

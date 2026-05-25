@@ -1,6 +1,3 @@
-// src/fxapp/UserContext.js
-import React, { createContext } from 'react';
-
-const UserContext = createContext(null);
+import { UserContext } from './UserProvider';
 
 export default UserContext;

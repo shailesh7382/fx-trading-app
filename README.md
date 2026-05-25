@@ -1,50 +1,57 @@
 # fx-trading-app
-This is FX Trading application that streams FX Rates and allows users to trade on it. 
-This is a java project designed using Spring Boot, React JS, Active MQ, H2 Database . It is build using maven and npm for JDK 11. 
 
+FX Trading application that streams FX rates and allows users to trade.
+
+The platform is built with Spring Boot services, a React UI, ActiveMQ for streaming market data, and H2 Database for persistence. The project uses Maven (Java modules) and npm (UI module).
 
 ## Getting Started
-To get you started you can simply clone the `fx-trading-app` repository and open in IntelliJ IDEA.
-![img.png](img.png)
 
-create a parent pom extending spring  boot. 
-![img_1.png](img_1.png)
+Clone the repository and open it in IntelliJ IDEA.
 
-create a child pom for user login and authentication and persistence of user to db 
-![img_2.png](img_2.png)
+## Development Progress (Screenshots)
 
-Now fully running for fx-auth-rs with user login and persistence to db.
-![img_3.png](img_3.png)
+> All screenshots are now organized under `images/`.
 
-Now created common data to generate pricing for 30 ccy pairs using a controlled random in place. 
-![img_4.png](img_4.png)
+Initial setup
+![Initial setup](images/img.png)
 
-We have created ActiveMQ Application that is publishing market data to mq topic every 500ms for 28 pairs.
-![img_5.png](img_5.png)
+Created parent POM extending Spring Boot
+![Parent POM](images/img_1.png)
 
-created fx-pricing-rs to subscribe to MQ for prices and persiste them in data base. 
-Also host rest api for retrieving prices.
-![img_6.png](img_6.png)
+Created auth service module and DB persistence for users
+![Auth service module](images/img_2.png)
 
-Testing all of it together with DB 
-![img_7.png](img_7.png)
+`fx-auth-rs` running with login and persistence
+![Auth service running](images/img_3.png)
 
-BREAK: Starting again - We will create a react js ui not to provide for a user login and a rate grid using the built backend services
-![img_8.png](img_8.png)
+Created common market data generator for 30 currency pairs
+![Common market data](images/img_4.png)
 
-Created a demo react app 
-![img_9.png](img_9.png)
+Created ActiveMQ publisher streaming market data every 500ms for 28 pairs
+![MQ publisher](images/img_5.png)
 
-Now login screen linked to server backend and logged in 
-![img_10.png](img_10.png)
+Created `fx-pricing-rs` subscriber, DB persistence, and REST API for prices
+![Pricing service](images/img_6.png)
 
-Created FX Trading Navigation 
-![img_11.png](img_11.png)
+Integrated backend services with database
+![Backend integration](images/img_7.png)
 
-Created Menu options and navigation
-![img_12.png](img_12.png)
+Started React UI development for login and rate grid
+![UI start](images/img_8.png)
 
-Rate Grid added to retrieve prices from backend service
-![img_13.png](img_13.png)
+Created demo React app
+![React demo app](images/img_9.png)
 
-OVER and Out for today
+Connected login screen to backend authentication
+![Login integration](images/img_10.png)
+
+Created FX trading navigation
+![Navigation](images/img_11.png)
+
+Added menu options and navigation flow
+![Menu and navigation](images/img_12.png)
+
+Added rate grid fetching prices from backend service
+![Rate grid](images/img_13.png)
+
+Done for the day.
