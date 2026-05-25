@@ -23,19 +23,14 @@ import { extractApiMessage } from '../api/client';
 
 const featureCards = [
   {
-    title: 'Live pricing panels',
-    description: 'Fast buy/sell actions, spread awareness, and cleaner instrument scanning.',
+    title: 'Pricing',
+    description: 'Review rates, spreads, and available size across the main currency pairs.',
     icon: <CandlestickChartRoundedIcon color="primary" />,
   },
   {
-    title: 'Ticket-first workflow',
-    description: 'Review quote, assign coverage, validate dates, and book with less friction.',
+    title: 'Trade capture',
+    description: 'Review terms, assign coverage, validate settlement, and submit tickets.',
     icon: <InsightsRoundedIcon color="secondary" />,
-  },
-  {
-    title: 'Fully mobile ready',
-    description: 'Responsive navigation, larger tap targets, and compact analytics for smaller screens.',
-    icon: <PhoneIphoneRoundedIcon color="success" />,
   },
 ];
 
@@ -60,11 +55,11 @@ function Login() {
     try {
       await login({ username, password });
       setSeverity('success');
-      setMessage('Authenticated. Redirecting to your trading workspace.');
+      setMessage('Authentication successful. Redirecting to the application.');
       navigate('/app');
     } catch (error) {
       setSeverity('error');
-      setMessage(extractApiMessage(error, 'Authentication failed. Use demo mode if the service is offline.'));
+      setMessage(extractApiMessage(error, 'Authentication failed. You can continue in demo mode if the service is unavailable.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -98,13 +93,12 @@ function Login() {
             />
             <Stack spacing={3} sx={{ position: 'relative' }}>
               <Box>
-                <Chip icon={<ShieldRoundedIcon />} label="Vite-upgraded FX workspace" color="primary" sx={{ mb: 2 }} />
+                <Chip icon={<ShieldRoundedIcon />} label="FX Trading Application" color="primary" sx={{ mb: 2 }} />
                 <Typography variant="h2" sx={{ maxWidth: 720, fontSize: { xs: '2.3rem', md: '3.5rem' } }}>
-                  FX Trading Workspace
+                  FX Trading Platform
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 680, mt: 1.5, fontSize: { xs: '1rem', md: '1.1rem' } }}>
-                  A sleeker dealing experience with a clearer user journey from live rates to booking, blotter, market
-                  analysis, and portfolio monitoring — tuned for desktop and mobile.
+                  Access pricing, booking, blotter, market analysis, and portfolio views from a single trading interface.
                 </Typography>
               </Box>
 
@@ -126,11 +120,6 @@ function Login() {
                 ))}
               </Box>
 
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-                <Chip label="Live pricing + demo fallback" variant="outlined" />
-                <Chip label="Responsive shell + bottom navigation" variant="outlined" />
-                <Chip label="Session & trade persistence" variant="outlined" />
-              </Stack>
             </Stack>
           </Paper>
 
@@ -138,9 +127,7 @@ function Login() {
             <Stack spacing={2.5} component="form" onSubmit={handleLogin}>
               <Box>
                 <Typography variant="h4">Sign in</Typography>
-                <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                  Connect to the auth service, or continue with a demo session if backend services are unavailable.
-                </Typography>
+
               </Box>
 
               {message ? <Alert severity={severity}>{message}</Alert> : null}
@@ -180,22 +167,13 @@ function Login() {
 
               <Stack spacing={1.25}>
                 <Button type="submit" variant="contained" size="large" disabled={isSubmitting}>
-                  {isSubmitting ? 'Signing in…' : 'Sign in to workspace'}
+                  {isSubmitting ? 'Signing in…' : 'Sign in'}
                 </Button>
                 <Button type="button" variant="outlined" size="large" onClick={handleDemoMode}>
                   Continue in demo mode
                 </Button>
               </Stack>
 
-              <Paper sx={{ p: 1.75, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
-                <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
-                  Operator notes
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  The app now gracefully falls back to demo market data and local trade capture so the UX remains
-                  reviewable even when `/api/login` or pricing endpoints are offline.
-                </Typography>
-              </Paper>
             </Stack>
           </Paper>
         </Box>

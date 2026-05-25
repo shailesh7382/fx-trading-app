@@ -82,7 +82,7 @@ function FXTradeBlotter() {
             <Box>
               <Typography variant="h4">Trade blotter</Typography>
               <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Review booked trades, distinguish live vs resilient local capture, and keep the execution trail readable on mobile.
+                Review booked trades, booking source, and execution history in one view.
               </Typography>
             </Box>
             <Button variant="contained" startIcon={<DownloadRoundedIcon />} onClick={exportBlotter}>

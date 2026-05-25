@@ -225,7 +225,7 @@ function FXTradeBooking() {
             <Box>
               <Typography variant="h4">FX trade booking</Typography>
               <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Review market terms, confirm customer coverage, and book into the blotter with a guarded quote timer.
+                Review trade terms, confirm coverage, and submit the ticket to the blotter.
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -388,7 +388,7 @@ function FXTradeBooking() {
           <Paper sx={{ p: 2.25 }}>
             <Typography variant="h6">Quote protection</Typography>
             <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-              Current ticket holds a {quoteDurationSeconds}-second booking window to make the flow closer to a real dealing desk.
+              The current quote remains valid for {quoteDurationSeconds} seconds before repricing is required.
             </Typography>
 
             <Box sx={{ mt: 1.75 }}>
@@ -406,7 +406,7 @@ function FXTradeBooking() {
           <Paper sx={{ p: 2.25 }}>
             <Typography variant="h6">Execution notes</Typography>
             <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-              If `/api/bookTrade` is unavailable, the ticket still lands in the blotter via resilient local capture so the end-to-end UX remains testable.
+              If `/api/bookTrade` is unavailable, the ticket is stored locally and still appears in the blotter.
             </Typography>
             <Stack direction="row" gap={1} sx={{ mt: 1.5, flexWrap: 'wrap' }}>
               <Chip label={activeRate?.source || 'MANUAL'} size="small" variant="outlined" />

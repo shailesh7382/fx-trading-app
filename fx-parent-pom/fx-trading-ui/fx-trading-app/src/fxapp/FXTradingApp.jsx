@@ -48,28 +48,28 @@ const navigationItems = [
 
 const pageTitles = {
   '/app': {
-    title: 'Desk overview',
-    subtitle: 'Track liquidity, route to a ticket, and keep execution context visible.',
+    title: 'Overview',
+    subtitle: 'Monitor market activity and open the required trading workflow.',
   },
   '/app/rates': {
-    title: 'Live FX rates',
-    subtitle: 'Optimized quote cards with larger actions and faster mobile scanning.',
+    title: 'Rates',
+    subtitle: 'Review current prices, spreads, and available size.',
   },
   '/app/booking': {
-    title: 'Trade ticket',
-    subtitle: 'Structured booking flow with quote protection and coverage details.',
+    title: 'Booking',
+    subtitle: 'Capture trade details, coverage assignments, and settlement terms.',
   },
   '/app/blotter': {
     title: 'Trade blotter',
-    subtitle: 'Stay on top of captured deals, booking mode, and customer flow.',
+    subtitle: 'Review booked trades, status, and client activity.',
   },
   '/app/analysis': {
     title: 'Market analysis',
-    subtitle: 'Monitor movers, spread conditions, and next best actions.',
+    subtitle: 'Monitor price moves, spread conditions, and liquidity.',
   },
   '/app/portfolio': {
-    title: 'Portfolio view',
-    subtitle: 'Summarize exposures and customer concentration from booked flow.',
+    title: 'Portfolio',
+    subtitle: 'Summarize exposures and client concentration from booked trades.',
   },
 };
 
@@ -86,9 +86,9 @@ function FXTradingApp() {
   const livePairs = workspaceData.rates.length;
   const deskChips = useMemo(
     () => [
-      { label: workspaceData.isDemo ? 'Demo liquidity' : 'Live feed', color: workspaceData.isDemo ? 'warning' : 'primary' },
+      { label: workspaceData.isDemo ? 'Demo data' : 'Live data', color: workspaceData.isDemo ? 'warning' : 'primary' },
       { label: `${livePairs} instruments`, color: 'default' },
-      { label: `${trades.length} trades in blotter`, color: 'default' },
+      { label: `${trades.length} trades`, color: 'default' },
     ],
     [livePairs, trades.length, workspaceData.isDemo]
   );
@@ -97,13 +97,13 @@ function FXTradingApp() {
     <Stack sx={{ height: '100%' }}>
       <Box sx={{ p: 2.25 }}>
         <Typography variant="overline" color="primary.main">
-          FX Trading Workspace
+          FX Trading Platform
         </Typography>
         <Typography variant="h5" sx={{ mt: 0.5 }}>
-          Sleek dealing shell
+          Trading Application
         </Typography>
         <Typography color="text.secondary" sx={{ mt: 1.25 }}>
-          Rebuilt with Vite, modern React, and a mobile-first app shell.
+          Access pricing, booking, blotter, analysis, and portfolio screens from one interface.
         </Typography>
       </Box>
 

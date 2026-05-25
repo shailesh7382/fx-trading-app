@@ -84,7 +84,7 @@ function FXRateGrid() {
             <Box>
               <Typography variant="h4">FX rate grid</Typography>
               <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Tap-friendly quote cards replace the old dense grid while keeping instant booking and export nearby.
+                Review current prices, spreads, and available size, with direct access to booking and export.
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
@@ -244,7 +244,7 @@ function FXRateGrid() {
                   }}
                 >
                   <Typography variant="body2" color="text.secondary">
-                    This streamlined card layout preserves the trading intent while being more usable on tablets and phones.
+                    Open a booking ticket directly from the selected quote.
                   </Typography>
                   <Button variant="text" onClick={() => navigate('/app/booking', { state: { quote: rate, direction: 'Buy' } })}>
                     Open trade ticket

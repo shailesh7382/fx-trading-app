@@ -43,7 +43,7 @@ function FXMarketAnalysis() {
           <Box>
             <Typography variant="h4">Market analysis</Typography>
             <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 780 }}>
-              Surface what matters faster: biggest movers, widest spreads, and the deepest liquidity pockets from the current workspace feed.
+              Review the largest market moves, widest spreads, and deepest liquidity from the current price feed.
             </Typography>
           </Box>
           <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
@@ -138,28 +138,28 @@ function FXMarketAnalysis() {
 
         <Stack spacing={2}>
           <Paper sx={{ p: 2.25 }}>
-            <Typography variant="h6">Actionable readout</Typography>
+            <Typography variant="h6">Market summary</Typography>
             <Stack spacing={1.25} sx={{ mt: 1.5 }}>
               <Typography color="text.secondary">
-                <strong>{analytics.topMover?.ccyPair || 'The lead pair'}</strong> is showing the strongest directional move. That is a good candidate for a fresh ticket review.
+                <strong>{analytics.topMover?.ccyPair || 'Leading pair'}</strong> currently shows the largest directional move.
               </Typography>
               <Typography color="text.secondary">
-                <strong>{analytics.widestSpread?.ccyPair || 'One pair'}</strong> has the widest spread, so price discipline matters more before booking.
+                <strong>{analytics.widestSpread?.ccyPair || 'Selected pair'}</strong> currently has the widest spread and may require closer pricing review.
               </Typography>
               <Typography color="text.secondary">
-                <strong>{analytics.deepestLiquidity?.ccyPair || 'The deepest pool'}</strong> offers the most size currently visible in the workspace.
+                <strong>{analytics.deepestLiquidity?.ccyPair || 'Most liquid pair'}</strong> currently shows the largest available size.
               </Typography>
             </Stack>
           </Paper>
 
           <Paper sx={{ p: 2.25 }}>
-            <Typography variant="h6">Next actions</Typography>
+            <Typography variant="h6">Actions</Typography>
             <Stack spacing={1.25} sx={{ mt: 1.5 }}>
               <Button variant="contained" onClick={() => navigate('/app/rates')}>
-                Review live rate cards
+                Review rates
               </Button>
               <Button variant="outlined" onClick={() => navigate('/app/booking', { state: { quote: analytics.topMover, direction: 'Buy' } })}>
-                Launch ticket on top mover
+                Open ticket for top mover
               </Button>
             </Stack>
           </Paper>

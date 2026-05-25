@@ -5,7 +5,7 @@ import App from './App';
 
 test('renders the upgraded login landing page', () => {
   render(<App />);
-  expect(screen.getByRole('heading', { name: /fx trading workspace/i })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /fx trading platform/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /continue in demo mode/i })).toBeInTheDocument();
 });
 
@@ -15,6 +15,6 @@ test('can enter the workspace through demo mode', async () => {
 
   await user.click(screen.getByRole('button', { name: /continue in demo mode/i }));
 
-  expect(await screen.findByText(/next best action/i)).toBeInTheDocument();
+  expect(await screen.findByText(/overview for/i)).toBeInTheDocument();
 });
 

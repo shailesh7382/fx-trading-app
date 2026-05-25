@@ -27,16 +27,16 @@ import { formatCurrency, formatDateTime, formatNotional, formatRelativeTime, for
 
 const workflowSteps = [
   {
-    title: '1. Watch the market',
-    description: 'Scan mobile-friendly live cards, spreads, and liquidity tiers before you commit.',
+    title: '1. Review market data',
+    description: 'Review current prices, spreads, and available liquidity before placing a trade.',
   },
   {
-    title: '2. Launch a ticket',
-    description: 'Open a pre-filled trade ticket from a live quote and validate the customer stack in one flow.',
+    title: '2. Open a ticket',
+    description: 'Create a trade ticket from a selected quote and complete the required trade details.',
   },
   {
-    title: '3. Monitor execution',
-    description: 'Review booked trades, follow coverage ownership, and keep portfolio exposure in check.',
+    title: '3. Review execution',
+    description: 'Monitor booked trades, coverage assignments, and portfolio exposure.',
   },
 ];
 
@@ -95,16 +95,12 @@ function DashboardHome() {
             <Box>
               <Chip
                 icon={<BoltIcon />}
-                label={isDemo ? 'Demo-powered workspace' : 'Live trading workspace'}
+                label={isDemo ? 'Demo environment' : 'Live environment'}
                 color={isDemo ? 'warning' : 'primary'}
                 sx={{ mb: 1.5 }}
               />
               <Typography variant="h4" sx={{ mb: 1 }}>
-                Next best action for {userDetails?.username}
-              </Typography>
-              <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
-                The UI has been rebuilt around a clearer trading path: monitor liquidity, open a structured ticket,
-                and follow through in the blotter and portfolio panels without losing mobile usability.
+                Overview for {userDetails?.username}
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} width={{ xs: '100%', md: 'auto' }}>
@@ -160,8 +156,7 @@ function DashboardHome() {
       >
         <Paper sx={{ p: 2.25 }}>
           <Stack direction="row" sx={{ mb: 2, justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">Comprehensive UX flow</Typography>
-            <Chip label="Mobile-first" color="secondary" variant="outlined" />
+            <Typography variant="h6">Trading workflow</Typography>
           </Stack>
           <Box
             sx={{
@@ -170,16 +165,7 @@ function DashboardHome() {
               gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
             }}
           >
-            {workflowSteps.map((step) => (
-              <Card key={step.title} sx={{ height: '100%' }}>
-                <CardContent>
-                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                    {step.title}
-                  </Typography>
-                  <Typography color="text.secondary">{step.description}</Typography>
-                </CardContent>
-              </Card>
-            ))}
+
           </Box>
 
           <Divider sx={{ my: 2.5 }} />
@@ -232,7 +218,7 @@ function DashboardHome() {
               {formatSignedDelta(marketSnapshot.topMover?.bidDelta)} bid move on the latest refresh.
             </Typography>
             <Typography color="text.secondary" sx={{ mt: 1.25 }}>
-              Use the live rate grid to reprice instantly and launch a ticket with the latest market direction.
+              Review the rates screen to update pricing and open a trade ticket from the latest quote.
             </Typography>
           </Paper>
 
