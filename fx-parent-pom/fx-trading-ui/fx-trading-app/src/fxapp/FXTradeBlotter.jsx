@@ -18,6 +18,13 @@ import UserContext from './UserContext';
 import { downloadCsv } from '../utils/export';
 import { formatCurrency, formatDateTime, formatNotional } from '../utils/formatters';
 
+const productTypeLabels = {
+  SPOT_FWD: 'FX Spot/Fwd',
+  SWAP: 'FX Swap',
+  NDF: 'NDFs',
+  BULLION: 'Bullion',
+};
+
 function FXTradeBlotter() {
   const { trades } = useContext(UserContext);
   const [search, setSearch] = useState('');
@@ -57,6 +64,8 @@ function FXTradeBlotter() {
       visibleTrades.map((trade) => ({
         TradeId: trade.id,
         Pair: trade.ccyPair,
+        ProductType: productTypeLabels[trade.productType] || trade.productType || 'FX Spot/Fwd',
+        ProductDetails: trade.productDetails || '',
           ExecutionType: trade.executionType || 'MARKET',
         Direction: trade.direction,
         Tenor: trade.tenor,
@@ -170,10 +179,14 @@ function FXTradeBlotter() {
                     <Chip label={trade.status} color="success" size="small" />
                     <Chip label={trade.bookingMode === 'live' ? 'Live capture' : 'Local fallback'} color={trade.bookingMode === 'live' ? 'primary' : 'warning'} size="small" />
                     <Chip label={trade.executionType === 'LIMIT' ? 'Limit executed' : 'Market ticket'} size="small" variant="outlined" />
+                    <Chip label={productTypeLabels[trade.productType] || trade.productType || 'FX Spot/Fwd'} size="small" variant="outlined" />
                   </Stack>
                 </Stack>
 
-                <Typography color="text.secondary">{trade.comments || 'No additional execution comments captured.'}</Typography>
+                <Typography color="text.secondary">
+                  {trade.productDetails ? `${trade.productDetails} · ` : ''}
+                  {trade.comments || 'No additional execution comments captured.'}
+                </Typography>
 
                 <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
                   <Chip label={`Trader ${trade.trader}`} variant="outlined" size="small" />

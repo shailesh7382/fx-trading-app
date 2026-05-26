@@ -53,6 +53,8 @@ public class TradeService {
         trade.setBookingMode(defaultText(tradeDraft.getBookingMode(), "live"));
         trade.setExecutionType(defaultText(tradeDraft.getExecutionType(), "MARKET"));
         trade.setLimitOrderId(tradeDraft.getLimitOrderId());
+        trade.setProductType(defaultText(tradeDraft.getProductType(), "SPOT_FWD"));
+        trade.setProductDetails(defaultText(tradeDraft.getProductDetails(), ""));
         trade.setBookedAt(tradeDraft.getBookedAt() != null ? tradeDraft.getBookedAt() : LocalDateTime.now(clock));
 
         return tradeRepository.save(trade);
@@ -78,6 +80,8 @@ public class TradeService {
         trade.setBookingMode("live");
         trade.setExecutionType("LIMIT");
         trade.setLimitOrderId(order.getId());
+        trade.setProductType("SPOT_FWD");
+        trade.setProductDetails(defaultText(order.getTenor(), "SP") + " settle " + trade.getSettlementDate());
         trade.setBookedAt(LocalDateTime.now(clock));
         return bookTrade(trade);
     }

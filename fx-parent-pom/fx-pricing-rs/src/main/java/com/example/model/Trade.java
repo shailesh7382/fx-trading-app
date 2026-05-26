@@ -32,6 +32,11 @@ public class Trade {
     private String bookingMode;
     private String executionType;
     private String limitOrderId;
+    private String productType;
+
+    @Column(length = 1024)
+    private String productDetails;
+
     private LocalDateTime bookedAt;
 
     public String getId() {
@@ -176,6 +181,22 @@ public class Trade {
 
     public void setLimitOrderId(String limitOrderId) {
         this.limitOrderId = limitOrderId;
+    }
+
+    public String getProductType() {
+        return productType;
+    }
+
+    public void setProductType(String productType) {
+        this.productType = productType;
+    }
+
+    public String getProductDetails() {
+        return productDetails;
+    }
+
+    public void setProductDetails(String productDetails) {
+        this.productDetails = productDetails;
     }
 
     public LocalDateTime getBookedAt() {
