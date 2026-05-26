@@ -24,12 +24,12 @@ import ecxIcon from '../assets/eCX-icon.svg';
 const featureCards = [
   {
     title: 'Pricing',
-    description: 'Review rates, spreads, and available size across the main currency pairs.',
+    description: 'Review rates',
     icon: <CandlestickChartRoundedIcon color="primary" />,
   },
   {
     title: 'Trade capture',
-    description: 'Review terms, assign coverage, validate settlement, and submit tickets.',
+    description: 'Review and submit tickets.',
     icon: <InsightsRoundedIcon color="secondary" />,
   },
 ];

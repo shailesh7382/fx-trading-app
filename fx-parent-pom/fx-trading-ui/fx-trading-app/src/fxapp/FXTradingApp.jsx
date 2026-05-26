@@ -51,11 +51,11 @@ const navigationItems = [
 const pageTitles = {
   '/app/rates': {
     title: 'Rates',
-    subtitle: 'Review current prices, spreads, and available size.',
+    subtitle: 'Review prices.',
   },
   '/app/limit-orders': {
     title: 'Limit orders',
-    subtitle: 'Review active and historical spot limit orders across the desk.',
+    subtitle: 'Review active and historical spot limit orders.',
   },
   '/app/notifications': {
     title: 'Notifications',
@@ -63,7 +63,7 @@ const pageTitles = {
   },
   '/app/booking': {
     title: 'Booking',
-    subtitle: 'Capture trade details, coverage assignments, and settlement terms.',
+    subtitle: 'Capture trade details and settlement terms.',
   },
   '/app/blotter': {
     title: 'Trade blotter',

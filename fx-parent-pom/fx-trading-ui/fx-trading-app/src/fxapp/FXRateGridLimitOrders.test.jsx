@@ -115,10 +115,10 @@ test('defaults the rates screen to manual RFQ mode and supports manual refresh',
   const user = userEvent.setup();
   const { refresh } = renderRateGrid();
 
-  const ratesToggle = await screen.findByRole('switch', { name: /manual rfq/i });
+  const ratesToggle = await screen.findByRole('switch', { name: /rfq/i });
   expect(ratesToggle).not.toBeChecked();
 
-  await user.click(screen.getByRole('button', { name: /refresh rates/i }));
+  await user.click(screen.getByRole('button', { name: /refresh/i }));
 
   expect(refresh).toHaveBeenCalledWith({ forceRates: true });
 });

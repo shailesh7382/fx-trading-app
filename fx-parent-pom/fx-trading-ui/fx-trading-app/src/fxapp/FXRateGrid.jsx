@@ -17,6 +17,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { amendLimitOrder, cancelLimitOrder, extractApiMessage, fetchFxGrid, submitLimitOrder } from '../api/client';
@@ -674,11 +675,11 @@ function FXRateGrid() {
     setRatesStreaming(nextStreamingState);
 
     if (!nextStreamingState) {
-      setLimitOrderFeedback({ severity: 'info', message: 'Manual RFQ mode enabled. Rates will stay fixed until you refresh them.' });
+      setLimitOrderFeedback({ severity: 'info', message: 'Manual RFQ mode enabled. ' });
       return;
     }
 
-    setLimitOrderFeedback({ severity: 'info', message: 'Live streaming enabled for the rates screen.' });
+    setLimitOrderFeedback({ severity: 'info', message: 'Live streaming enabled.' });
     await refresh?.({ forceRates: true });
   };
 
@@ -693,24 +694,42 @@ function FXRateGrid() {
       {limitOrderFeedback ? <Alert severity={limitOrderFeedback.severity}>{limitOrderFeedback.message}</Alert> : null}
 
       <Paper sx={{ p: 1.35 }}>
-        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} sx={{ justifyContent: 'space-between', alignItems: { xs: 'flex-start', lg: 'center' } }}>
+        <Stack direction="row" spacing={1.25} sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               Manual RFQ controls
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
-              Streaming is off by default so quotes stay fixed while you work an RFQ.
-            </Typography>
           </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0, flexWrap: 'nowrap' }}>
             <FormControlLabel
               control={<Switch checked={isRatesStreaming} onChange={handleRatesModeToggle} />}
-              label={isRatesStreaming ? 'Live streaming' : 'Manual RFQ'}
-              sx={{ mr: 0 }}
+              label={isRatesStreaming ? 'Live streaming' : 'RFQ'}
+              sx={{ mr: 0, whiteSpace: 'nowrap', '& .MuiFormControlLabel-label': { fontSize: '0.84rem', fontWeight: 600 } }}
             />
-            <Button size="small" variant="outlined" onClick={handleManualRatesRefresh} disabled={isLoading || isGridLoading}>
-              Refresh rates
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<SyncRoundedIcon fontSize="small" />}
+              onClick={handleManualRatesRefresh}
+              disabled={isLoading || isGridLoading}
+              sx={{
+                minWidth: 118,
+                height: 34,
+                px: 1.35,
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                letterSpacing: '0.02em',
+                borderColor: 'rgba(143, 189, 232, 0.24)',
+                bgcolor: 'rgba(255,255,255,0.03)',
+                color: 'text.primary',
+                '&:hover': {
+                  borderColor: 'rgba(143, 189, 232, 0.38)',
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                },
+              }}
+            >
+              Refresh
             </Button>
           </Stack>
         </Stack>
