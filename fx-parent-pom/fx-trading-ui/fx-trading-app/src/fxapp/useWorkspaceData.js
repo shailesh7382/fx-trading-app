@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchFxPrices } from '../api/client';
+import { fetchFxPrices, fetchLimitOrders } from '../api/client';
 import { getFallbackRates, simulateMarketSnapshot } from '../data/mockData';
 
 function normalizeRates(rawRates, previousRates = []) {
@@ -33,18 +33,21 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
   const [isLoading, setIsLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
   const [error, setError] = useState('');
+  const [limitOrders, setLimitOrders] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
 
   const refresh = useCallback(async () => {
-    try {
-      const liveRates = await fetchFxPrices();
+    const [ratesResult, limitOrdersResult] = await Promise.allSettled([fetchFxPrices(), fetchLimitOrders()]);
+
+    if (ratesResult.status === 'fulfilled') {
+      const liveRates = ratesResult.value;
       const normalized = normalizeRates(liveRates, previousRatesRef.current);
       previousRatesRef.current = normalized;
       setRates(normalized);
       setIsDemo(false);
       setError('');
       setLastUpdated(new Date().toISOString());
-    } catch (fetchError) {
+    } else {
       const simulated = normalizeRates(
         simulateMarketSnapshot(previousRatesRef.current.length ? previousRatesRef.current : getFallbackRates()),
         previousRatesRef.current
@@ -54,9 +57,13 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
       setIsDemo(true);
       setError('Live pricing is unavailable, so demo liquidity is currently powering the workspace.');
       setLastUpdated(new Date().toISOString());
-    } finally {
-      setIsLoading(false);
     }
+
+    if (limitOrdersResult.status === 'fulfilled') {
+      setLimitOrders(Array.isArray(limitOrdersResult.value) ? limitOrdersResult.value : []);
+    }
+
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -77,6 +84,7 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
     isLoading,
     isDemo,
     error,
+    limitOrders,
     lastUpdated,
     refresh,
   };

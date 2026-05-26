@@ -24,6 +24,9 @@ public class FxPriceService implements MarketDataUpdateListener {
     @Autowired
     private FxPriceRepository fxPriceRepository;
 
+    @Autowired
+    private LimitOrderService limitOrderService;
+
     public FxPrice saveFxPrice(FxPrice fxPrice) {
         return fxPriceRepository.save(fxPrice);
     }
@@ -38,6 +41,8 @@ public class FxPriceService implements MarketDataUpdateListener {
         for (FxPrice fxPrice : fxPrices) {
             saveFxPrice(fxPrice);
         }
+
+        limitOrderService.evaluateTriggeredOrders(ccyPair, tenor.getLabel(), fxPrices);
     }
 
     public List<FxPrice> getAllPrices() {
@@ -114,7 +119,13 @@ public class FxPriceService implements MarketDataUpdateListener {
     }
 
     public FxPrice updatePrice(FxPrice fxPrice) {
-        return fxPriceRepository.save(fxPrice);
+        FxPrice savedPrice = fxPriceRepository.save(fxPrice);
+        limitOrderService.evaluateTriggeredOrders(
+                savedPrice.getCcyPair(),
+                savedPrice.getTenorLabel(),
+                fxPriceRepository.findByCcyPairAndTenor(savedPrice.getCcyPair(), savedPrice.getTenor())
+        );
+        return savedPrice;
     }
 
 }

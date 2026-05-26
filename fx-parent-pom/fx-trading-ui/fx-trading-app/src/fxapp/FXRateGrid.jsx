@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
   IconButton,
   InputBase,
   MenuItem,
@@ -16,8 +17,9 @@ import {
 } from '@mui/material';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { fetchFxGrid } from '../api/client';
-import { calculateSettlementDate, getCurrencyCodes, getRateDisplayParts } from '../utils/formatters';
+import { extractApiMessage, fetchFxGrid, submitLimitOrder } from '../api/client';
+import UserContext from './UserContext';
+import { calculateSettlementDate, formatDateTime, formatNotional, formatRate, getCurrencyCodes, getRateDisplayParts } from '../utils/formatters';
 
 const flashDurationMs = 900;
 const tenorOrder = ['SP', '1W', '1M', '6M', '1Y', '3M'];
@@ -87,6 +89,31 @@ function getInitialDealQuantity(rate) {
   return String(roundedQuantity);
 }
 
+function getInitialLimitPrice(direction, rate) {
+  if (!rate) {
+    return '';
+  }
+
+  return String(direction === 'Sell' ? rate.bid : rate.ask);
+}
+
+function getDefaultGoodTillDate() {
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  return nextWeek.toISOString().slice(0, 10);
+}
+
+function buildInitialLimitOrderForm(rate, selection) {
+  return {
+    ccyPair: selection?.ccyPair || rate?.ccyPair || '',
+    tenor: selection?.tenor || rate?.tenor || 'SP',
+    direction: 'Buy',
+    limitPrice: getInitialLimitPrice('Buy', rate),
+    timeInForce: 'GTC',
+    goodTillDate: getDefaultGoodTillDate(),
+  };
+}
+
 function RateDisplay({ value, accentColor }) {
   const { major, significant, pipette } = getRateDisplayParts(value);
 
@@ -123,7 +150,8 @@ function RateDisplay({ value, accentColor }) {
 
 function FXRateGrid() {
   const navigate = useNavigate();
-  const { rates, error, isLoading, lastUpdated } = useOutletContext();
+  const { userDetails } = useContext(UserContext);
+  const { rates, error, isLoading, lastUpdated, limitOrders = [], refresh } = useOutletContext();
   const maxVisibleRates = 6;
   const [serverRates, setServerRates] = useState([]);
   const [gridRequestFailed, setGridRequestFailed] = useState(false);
@@ -135,6 +163,9 @@ function FXRateGrid() {
   const [dealCurrencies, setDealCurrencies] = useState([]);
   const [dealQuantities, setDealQuantities] = useState([]);
   const [editingQuantityIndex, setEditingQuantityIndex] = useState(null);
+  const [limitOrderForms, setLimitOrderForms] = useState([]);
+  const [submittingLimitIndex, setSubmittingLimitIndex] = useState(null);
+  const [limitOrderFeedback, setLimitOrderFeedback] = useState(null);
 
   const displayRates = useMemo(() => {
     const grouped = new Map();
@@ -318,6 +349,20 @@ function FXRateGrid() {
   }, [displayedCards]);
 
   useEffect(() => {
+    setLimitOrderForms((previousForms) =>
+      displayedCards.map((card, index) => {
+        const previousForm = previousForms[index];
+
+        if (previousForm && previousForm.ccyPair === card.selection.ccyPair && previousForm.tenor === card.selection.tenor) {
+          return previousForm;
+        }
+
+        return buildInitialLimitOrderForm(card.quote, card.selection);
+      })
+    );
+  }, [displayedCards]);
+
+  useEffect(() => {
     if (editingQuantityIndex == null || editingQuantityIndex < displayedCards.length) {
       return;
     }
@@ -406,6 +451,100 @@ function FXRateGrid() {
     setDealQuantities((previousSelections) => previousSelections.map((selection, index) => (index === cardIndex ? nextValue : selection)));
   };
 
+  const handleLimitOrderFieldChange = (cardIndex, field, value, rate, selection) => {
+    setLimitOrderForms((previousForms) =>
+      previousForms.map((form, index) => {
+        if (index !== cardIndex) {
+          return form;
+        }
+
+        if (field === 'direction') {
+          return {
+            ...form,
+            ccyPair: selection.ccyPair,
+            tenor: selection.tenor,
+            direction: value,
+            limitPrice: getInitialLimitPrice(value, rate),
+          };
+        }
+
+        if (field === 'timeInForce') {
+          return {
+            ...form,
+            ccyPair: selection.ccyPair,
+            tenor: selection.tenor,
+            timeInForce: value,
+            goodTillDate: form.goodTillDate || getDefaultGoodTillDate(),
+          };
+        }
+
+        return {
+          ...form,
+          ccyPair: selection.ccyPair,
+          tenor: selection.tenor,
+          [field]: value,
+        };
+      })
+    );
+  };
+
+  const activeLimitOrders = useMemo(
+    () => (Array.isArray(limitOrders) ? limitOrders.filter((order) => order?.status === 'ACTIVE') : []),
+    [limitOrders]
+  );
+
+  const handleSubmitLimitOrder = async ({ cardIndex, form, selection, dealtCurrency, qty, settlementDate }) => {
+    if (selection.tenor !== 'SP') {
+      setLimitOrderFeedback({ severity: 'info', message: 'Limit orders are available for spot cards only.' });
+      return;
+    }
+
+    const parsedQty = Number.parseInt(qty, 10);
+    const parsedLimitPrice = Number(form.limitPrice);
+
+    if (!parsedQty) {
+      setLimitOrderFeedback({ severity: 'error', message: 'Enter a valid quantity before submitting a limit order.' });
+      return;
+    }
+
+    if (!parsedLimitPrice) {
+      setLimitOrderFeedback({ severity: 'error', message: 'Enter a valid limit price before submitting a limit order.' });
+      return;
+    }
+
+    setSubmittingLimitIndex(cardIndex);
+
+    try {
+      const submittedOrder = await submitLimitOrder({
+        ccyPair: selection.ccyPair,
+        tenor: selection.tenor,
+        qty: parsedQty,
+        direction: form.direction,
+        dealtCurrency: dealtCurrency,
+        limitPrice: parsedLimitPrice,
+        timeInForce: form.timeInForce,
+        goodTillDate: form.timeInForce === 'GTD' ? form.goodTillDate : null,
+        tradeDate: new Date().toISOString().slice(0, 10),
+        settlementDate,
+        trader: userDetails?.username || 'demo.trader',
+      });
+
+      setLimitOrderFeedback({
+        severity: 'success',
+        message: `Limit order ${submittedOrder.id} submitted for ${submittedOrder.direction} ${submittedOrder.ccyPair}.`,
+      });
+
+      await refresh?.();
+    } catch (submitError) {
+      setLimitOrderFeedback({
+        severity: 'error',
+        message: extractApiMessage(submitError, 'Unable to submit the limit order right now.'),
+      });
+    } finally {
+      setSubmittingLimitIndex(null);
+    }
+  };
+
   const buildBookingState = (rate, direction, dealtCurrency, valueDate, qty) => ({
     quote: rate,
     direction,
@@ -417,204 +556,402 @@ function FXRateGrid() {
   return (
     <Stack spacing={3}>
       {error ? <Alert severity="warning">{error}</Alert> : null}
+      {limitOrderFeedback ? <Alert severity={limitOrderFeedback.severity}>{limitOrderFeedback.message}</Alert> : null}
 
       <Box
         sx={{
           display: 'grid',
-          gap: 1.25,
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
+          gap: 1.5,
+          alignItems: 'start',
+          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.75fr) minmax(320px, 0.9fr)' },
         }}
       >
-        {displayedCards.map(({ quote: rate, selection, index }) => {
-          const { base, terms } = getCurrencyCodes(selection.ccyPair);
-          const valueDate = calculateSettlementDate(new Date().toISOString(), selection.tenor);
-          const selectedDealCurrency = dealCurrencies[index] || base;
-          const selectedDealQuantity = dealQuantities[index] || getInitialDealQuantity(rate);
-          const bookingQuantity = Number.parseInt(selectedDealQuantity, 10) || Number.parseInt(getInitialDealQuantity(rate), 10);
-          const nextDealCurrency = selectedDealCurrency === base ? terms : base;
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 1.25,
+            gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
+          }}
+        >
+          {displayedCards.map(({ quote: rate, selection, index }) => {
+            const { base, terms } = getCurrencyCodes(selection.ccyPair);
+            const valueDate = calculateSettlementDate(new Date().toISOString(), selection.tenor);
+            const selectedDealCurrency = dealCurrencies[index] || base;
+            const selectedDealQuantity = dealQuantities[index] || getInitialDealQuantity(rate);
+            const bookingQuantity = Number.parseInt(selectedDealQuantity, 10) || Number.parseInt(getInitialDealQuantity(rate), 10);
+            const nextDealCurrency = selectedDealCurrency === base ? terms : base;
+            const limitOrderForm = limitOrderForms[index] || buildInitialLimitOrderForm(rate, selection);
+            const isSpotCard = selection.tenor === 'SP';
 
-          return (
-            <Card key={`${selection.ccyPair}-${selection.tenor}-${index}`} sx={{ borderRadius: 1 }}>
-            <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, '&:last-child': { pb: { xs: 1.5, md: 1.75 } } }}>
-              <Stack spacing={1.5}>
-                <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Stack direction="row" spacing={0.5} sx={{ width: '100%', flexWrap: 'wrap' }}>
-                    <TextField
-                      select
-                      size="small"
-                      value={selection.ccyPair}
-                      onChange={(event) => handlePairChange(index, event.target.value)}
-                      sx={{
-                        minWidth: 138,
-                        flex: 1,
-                        '& .MuiOutlinedInput-root': {
-                          borderRadius: 0.45,
-                          bgcolor: 'rgba(255,255,255,0.02)',
-                        },
-                        '& .MuiSelect-select': {
-                          py: 0.6,
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          letterSpacing: '0.04em',
-                        },
-                      }}
-                    >
-                      {pairOptions.map((pairOption) => (
-                        <MenuItem key={pairOption} value={pairOption}>
-                          {pairOption}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                    <TextField
-                      select
-                      size="small"
-                      value={selection.tenor}
-                      onChange={(event) => handleTenorChange(index, event.target.value)}
-                      sx={{
-                        width: 88,
-                        flexShrink: 0,
-                        '& .MuiOutlinedInput-root': {
-                          borderRadius: 0.45,
-                          bgcolor: 'rgba(255,255,255,0.02)',
-                        },
-                        '& .MuiSelect-select': {
-                          py: 0.6,
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          letterSpacing: '0.04em',
-                          textAlign: 'center',
-                        },
-                      }}
-                    >
-                      {(tenorsByPair.get(selection.ccyPair) || [selection.tenor]).map((tenorOption) => (
-                        <MenuItem key={tenorOption} value={tenorOption}>
-                          {tenorOption}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Stack>
-                </Stack>
+            return (
+              <Card key={`${selection.ccyPair}-${selection.tenor}-${index}`} sx={{ borderRadius: 1 }}>
+                <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, '&:last-child': { pb: { xs: 1.5, md: 1.75 } } }}>
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Stack direction="row" spacing={0.5} sx={{ width: '100%', flexWrap: 'wrap' }}>
+                        <TextField
+                          select
+                          size="small"
+                          value={selection.ccyPair}
+                          onChange={(event) => handlePairChange(index, event.target.value)}
+                          sx={{
+                            minWidth: 138,
+                            flex: 1,
+                            '& .MuiOutlinedInput-root': {
+                              borderRadius: 0.45,
+                              bgcolor: 'rgba(255,255,255,0.02)',
+                            },
+                            '& .MuiSelect-select': {
+                              py: 0.6,
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                            },
+                          }}
+                        >
+                          {pairOptions.map((pairOption) => (
+                            <MenuItem key={pairOption} value={pairOption}>
+                              {pairOption}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                        <TextField
+                          select
+                          size="small"
+                          value={selection.tenor}
+                          onChange={(event) => handleTenorChange(index, event.target.value)}
+                          sx={{
+                            width: 88,
+                            flexShrink: 0,
+                            '& .MuiOutlinedInput-root': {
+                              borderRadius: 0.45,
+                              bgcolor: 'rgba(255,255,255,0.02)',
+                            },
+                            '& .MuiSelect-select': {
+                              py: 0.6,
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              textAlign: 'center',
+                            },
+                          }}
+                        >
+                          {(tenorsByPair.get(selection.ccyPair) || [selection.tenor]).map((tenorOption) => (
+                            <MenuItem key={tenorOption} value={tenorOption}>
+                              {tenorOption}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Stack>
+                    </Stack>
 
-                <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-                  <Paper sx={getQuoteTileStyles('rgba(255, 107, 129, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
-                    <RateDisplay value={rate.bid} accentColor="error.main" />
-                    <Button
-                      fullWidth
-                      color="error"
-                      variant="outlined"
-                      sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
-                      onClick={() =>
-                        navigate('/app/booking', {
-                          state: buildBookingState(rate, 'Sell', selectedDealCurrency, valueDate, bookingQuantity),
-                        })
-                      }
-                    >
-                      Sell
-                    </Button>
-                  </Paper>
+                    <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                      <Paper sx={getQuoteTileStyles('rgba(255, 107, 129, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
+                        <RateDisplay value={rate.bid} accentColor="error.main" />
+                        <Button
+                          fullWidth
+                          color="error"
+                          variant="outlined"
+                          sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
+                          onClick={() =>
+                            navigate('/app/booking', {
+                              state: buildBookingState(rate, 'Sell', selectedDealCurrency, valueDate, bookingQuantity),
+                            })
+                          }
+                        >
+                          Sell
+                        </Button>
+                      </Paper>
 
-                  <Paper sx={getQuoteTileStyles('rgba(43, 213, 118, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.ask)}>
-                    <RateDisplay value={rate.ask} accentColor="success.main" />
-                    <Button
-                      fullWidth
-                      color="success"
-                      variant="contained"
-                      sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
-                      onClick={() =>
-                        navigate('/app/booking', {
-                          state: buildBookingState(rate, 'Buy', selectedDealCurrency, valueDate, bookingQuantity),
-                        })
-                      }
-                    >
-                      Buy
-                    </Button>
-                  </Paper>
-                </Box>
-
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 0.75,
-                    borderRadius: 0.75,
-                    borderColor: 'rgba(255,255,255,0.08)',
-                    bgcolor: 'rgba(255,255,255,0.02)',
-                  }}
-                >
-                  <Stack
-                    direction="row"
-                    spacing={0.75}
-                    sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: 0.75 }}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.25,
-                        px: 1,
-                        py: 0.5,
-                        borderRadius: 0.6,
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        bgcolor: 'rgba(255,255,255,0.02)',
-                        minWidth: 0,
-                        flex: '1 1 auto',
-                      }}
-                    >
-                      <InputBase
-                        value={editingQuantityIndex === index ? selectedDealQuantity : formatDealQuantity(selectedDealQuantity)}
-                        onChange={(event) => handleDealQuantityChange(index, event.target.value)}
-                        onFocus={(event) => {
-                          setEditingQuantityIndex(index);
-                          event.target.select();
-                        }}
-                        onBlur={() => {
-                          setEditingQuantityIndex((currentIndex) => (currentIndex === index ? null : currentIndex));
-                        }}
-                        inputProps={{
-                          'aria-label': `${selection.ccyPair} quantity`,
-                          inputMode: 'numeric',
-                          pattern: '[0-9,]*',
-                        }}
-                        sx={{
-                          flex: '0 1 140px',
-                          minWidth: 96,
-                          fontWeight: 700,
-                          fontSize: '0.95rem',
-                          fontVariantNumeric: 'tabular-nums',
-                          '& input': {
-                            p: 0,
-                            textAlign: 'right',
-                          },
-                        }}
-                      />
-                      <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em' }}>
-                        {selectedDealCurrency}
-                      </Typography>
-                      <Tooltip title={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}>
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => toggleDealCurrency(index, base, terms)}
-                            disabled={!nextDealCurrency}
-                            aria-label={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}
-                            sx={{ color: 'text.secondary' }}
-                          >
-                            <SwapHorizRoundedIcon fontSize="inherit" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                      <Paper sx={getQuoteTileStyles('rgba(43, 213, 118, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.ask)}>
+                        <RateDisplay value={rate.ask} accentColor="success.main" />
+                        <Button
+                          fullWidth
+                          color="success"
+                          variant="contained"
+                          sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
+                          onClick={() =>
+                            navigate('/app/booking', {
+                              state: buildBookingState(rate, 'Buy', selectedDealCurrency, valueDate, bookingQuantity),
+                            })
+                          }
+                        >
+                          Buy
+                        </Button>
+                      </Paper>
                     </Box>
 
-                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto' }}>
-                      {valueDate}
-                    </Typography>
-                  </Stack>
-                </Paper>
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 0.75,
+                        borderRadius: 0.75,
+                        borderColor: 'rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(255,255,255,0.02)',
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: 0.75 }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.25,
+                            px: 1,
+                            py: 0.5,
+                            borderRadius: 0.6,
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            bgcolor: 'rgba(255,255,255,0.02)',
+                            minWidth: 0,
+                            flex: '1 1 auto',
+                          }}
+                        >
+                          <InputBase
+                            value={editingQuantityIndex === index ? selectedDealQuantity : formatDealQuantity(selectedDealQuantity)}
+                            onChange={(event) => handleDealQuantityChange(index, event.target.value)}
+                            onFocus={(event) => {
+                              setEditingQuantityIndex(index);
+                              event.target.select();
+                            }}
+                            onBlur={() => {
+                              setEditingQuantityIndex((currentIndex) => (currentIndex === index ? null : currentIndex));
+                            }}
+                            inputProps={{
+                              'aria-label': `${selection.ccyPair} quantity`,
+                              inputMode: 'numeric',
+                              pattern: '[0-9,]*',
+                            }}
+                            sx={{
+                              flex: '0 1 140px',
+                              minWidth: 96,
+                              fontWeight: 700,
+                              fontSize: '0.95rem',
+                              fontVariantNumeric: 'tabular-nums',
+                              '& input': {
+                                p: 0,
+                                textAlign: 'right',
+                              },
+                            }}
+                          />
+                          <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em' }}>
+                            {selectedDealCurrency}
+                          </Typography>
+                          <Tooltip title={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() => toggleDealCurrency(index, base, terms)}
+                                disabled={!nextDealCurrency}
+                                aria-label={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}
+                                sx={{ color: 'text.secondary' }}
+                              >
+                                <SwapHorizRoundedIcon fontSize="inherit" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
 
-              </Stack>
-            </CardContent>
-          </Card>
-          );
-        })}
+                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto' }}>
+                          {valueDate}
+                        </Typography>
+                      </Stack>
+                    </Paper>
+
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 1,
+                        borderRadius: 0.75,
+                        borderColor: 'rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(255,255,255,0.02)',
+                      }}
+                    >
+                      <Stack spacing={1.1}>
+                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', rowGap: 0.75 }}>
+                          <Box>
+                            <Typography variant="subtitle2">Spot limit order</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                              Submit GTC or GTD instructions directly from the rate card. Orders execute server-side once the spot limit is hit.
+                            </Typography>
+                          </Box>
+                          <Chip label={isSpotCard ? 'Spot enabled' : 'Spot only'} size="small" color={isSpotCard ? 'primary' : 'default'} variant="outlined" />
+                        </Stack>
+
+                        {isSpotCard ? (
+                          <>
+                            <Typography variant="body2" color="text.secondary">
+                              Uses {formatDealQuantity(selectedDealQuantity) || '0'} {selectedDealCurrency} · settles {valueDate}
+                            </Typography>
+
+                            <Box
+                              sx={{
+                                display: 'grid',
+                                gap: 1,
+                                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
+                              }}
+                            >
+                              <TextField
+                                select
+                                size="small"
+                                label="Side"
+                                value={limitOrderForm.direction}
+                                onChange={(event) => handleLimitOrderFieldChange(index, 'direction', event.target.value, rate, selection)}
+                              >
+                                <MenuItem value="Buy">Buy</MenuItem>
+                                <MenuItem value="Sell">Sell</MenuItem>
+                              </TextField>
+                              <TextField
+                                size="small"
+                                label="Limit price"
+                                type="number"
+                                value={limitOrderForm.limitPrice}
+                                onChange={(event) => handleLimitOrderFieldChange(index, 'limitPrice', event.target.value, rate, selection)}
+                              />
+                              <TextField
+                                select
+                                size="small"
+                                label="TIF"
+                                value={limitOrderForm.timeInForce}
+                                onChange={(event) => handleLimitOrderFieldChange(index, 'timeInForce', event.target.value, rate, selection)}
+                              >
+                                <MenuItem value="GTC">GTC</MenuItem>
+                                <MenuItem value="GTD">GTD</MenuItem>
+                              </TextField>
+                              {limitOrderForm.timeInForce === 'GTD' ? (
+                                <TextField
+                                  size="small"
+                                  label="Good till"
+                                  type="date"
+                                  value={limitOrderForm.goodTillDate}
+                                  onChange={(event) => handleLimitOrderFieldChange(index, 'goodTillDate', event.target.value, rate, selection)}
+                                  slotProps={{ inputLabel: { shrink: true } }}
+                                />
+                              ) : (
+                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.1 }}>
+                                    Good till
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.35 }}>
+                                    Cancelled
+                                  </Typography>
+                                </Paper>
+                              )}
+                            </Box>
+
+                            <Button
+                              variant="contained"
+                              onClick={() =>
+                                handleSubmitLimitOrder({
+                                  cardIndex: index,
+                                  form: limitOrderForm,
+                                  selection,
+                                  dealtCurrency: selectedDealCurrency,
+                                  qty: selectedDealQuantity,
+                                  settlementDate: valueDate,
+                                })
+                              }
+                              disabled={submittingLimitIndex === index}
+                            >
+                              {submittingLimitIndex === index ? 'Submitting…' : 'Submit limit order'}
+                            </Button>
+                          </>
+                        ) : (
+                          <Alert severity="info" sx={{ mb: 0 }}>
+                            Switch the card tenor back to SP to place a limit order from the rate grid.
+                          </Alert>
+                        )}
+                      </Stack>
+                    </Paper>
+                  </Stack>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </Box>
+
+        <Stack spacing={1.25}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Current limit orders</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+              Active spot GTD and GTC orders stored on the pricing server and evaluated against the live market feed.
+            </Typography>
+
+            <Stack direction="row" gap={1} sx={{ mt: 1.5, flexWrap: 'wrap' }}>
+              <Chip label={`${activeLimitOrders.length} active`} color={activeLimitOrders.length ? 'primary' : 'default'} size="small" />
+              <Chip label={`${activeLimitOrders.filter((order) => order.timeInForce === 'GTD').length} GTD`} size="small" variant="outlined" />
+              <Chip label={`${activeLimitOrders.filter((order) => order.timeInForce === 'GTC').length} GTC`} size="small" variant="outlined" />
+            </Stack>
+          </Paper>
+
+          <Stack spacing={1}>
+            {activeLimitOrders.length ? (
+              activeLimitOrders.map((order) => {
+                const referenceRate = quoteLookup.get(`${order.ccyPair}|${order.tenor}`);
+                const liveMarketPrice = referenceRate ? (order.direction === 'Buy' ? referenceRate.ask : referenceRate.bid) : null;
+                const atLimit =
+                  liveMarketPrice == null
+                    ? false
+                    : order.direction === 'Buy'
+                      ? liveMarketPrice <= Number(order.limitPrice)
+                      : liveMarketPrice >= Number(order.limitPrice);
+
+                return (
+                  <Paper key={order.id} sx={{ p: 1.5 }}>
+                    <Stack spacing={1}>
+                      <Stack direction="row" spacing={0.75} sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', rowGap: 0.75 }}>
+                        <Box>
+                          <Typography variant="subtitle1">
+                            {order.direction} {order.ccyPair}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatNotional(order.qty)} · {order.dealtCurrency} · {order.tenor}
+                          </Typography>
+                        </Box>
+                        <Stack direction="row" gap={0.5} sx={{ flexWrap: 'wrap' }}>
+                          <Chip label={order.timeInForce} size="small" variant="outlined" />
+                          <Chip label={atLimit ? 'At/through limit' : 'Working'} size="small" color={atLimit ? 'success' : 'default'} />
+                        </Stack>
+                      </Stack>
+
+                      <Stack spacing={0.75}>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                          <Typography color="text.secondary">Limit</Typography>
+                          <Typography>{formatRate(order.limitPrice)}</Typography>
+                        </Stack>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                          <Typography color="text.secondary">Live spot</Typography>
+                          <Typography>{liveMarketPrice == null ? 'N/A' : formatRate(liveMarketPrice)}</Typography>
+                        </Stack>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                          <Typography color="text.secondary">Good till</Typography>
+                          <Typography>{order.timeInForce === 'GTD' ? order.goodTillDate : 'Cancelled'}</Typography>
+                        </Stack>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                          <Typography color="text.secondary">Submitted</Typography>
+                          <Typography>{formatDateTime(order.submittedAt)}</Typography>
+                        </Stack>
+                      </Stack>
+
+                      <Typography variant="caption" color="text.secondary">
+                        {order.id} · Trader {order.trader || 'system'}
+                      </Typography>
+                    </Stack>
+                  </Paper>
+                );
+              })
+            ) : (
+              <Paper sx={{ p: 2.5, textAlign: 'center' }}>
+                <Typography variant="subtitle1">No active spot limit orders</Typography>
+                <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+                  Submit a GTC or GTD order from any spot rate card to start monitoring it on the server.
+                </Typography>
+              </Paper>
+            )}
+          </Stack>
+        </Stack>
       </Box>
 
       {!visibleRates.length && !(isLoading || isGridLoading) ? (

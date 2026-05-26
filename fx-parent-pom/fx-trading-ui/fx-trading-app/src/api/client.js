@@ -42,6 +42,21 @@ export async function submitTrade(payload) {
   return response.data;
 }
 
+export async function fetchTrades() {
+  const response = await pricingApi.get('/trades');
+  return response.data;
+}
+
+export async function fetchLimitOrders(params = {}) {
+  const response = await pricingApi.get('/limit-orders', { params });
+  return response.data;
+}
+
+export async function submitLimitOrder(payload) {
+  const response = await pricingApi.post('/limit-orders', payload);
+  return response.data;
+}
+
 export function extractApiMessage(error, fallbackMessage) {
   return (
     error?.response?.data?.message ||

@@ -57,6 +57,7 @@ function FXTradeBlotter() {
       visibleTrades.map((trade) => ({
         TradeId: trade.id,
         Pair: trade.ccyPair,
+          ExecutionType: trade.executionType || 'MARKET',
         Direction: trade.direction,
         Tenor: trade.tenor,
         Quantity: trade.qty,
@@ -162,12 +163,13 @@ function FXTradeBlotter() {
                       {trade.direction} {trade.ccyPair}
                     </Typography>
                     <Typography color="text.secondary">
-                      {trade.customer} · {trade.tenor} · {formatNotional(trade.qty)} · {trade.dealtCurrency}
+                      {trade.customer || 'Desk order'} · {trade.tenor} · {formatNotional(trade.qty)} · {trade.dealtCurrency}
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
                     <Chip label={trade.status} color="success" size="small" />
                     <Chip label={trade.bookingMode === 'live' ? 'Live capture' : 'Local fallback'} color={trade.bookingMode === 'live' ? 'primary' : 'warning'} size="small" />
+                    <Chip label={trade.executionType === 'LIMIT' ? 'Limit executed' : 'Market ticket'} size="small" variant="outlined" />
                   </Stack>
                 </Stack>
 
@@ -175,8 +177,8 @@ function FXTradeBlotter() {
 
                 <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
                   <Chip label={`Trader ${trade.trader}`} variant="outlined" size="small" />
-                  <Chip label={`RM ${trade.rm}`} variant="outlined" size="small" />
-                  <Chip label={`Sales ${trade.sales}`} variant="outlined" size="small" />
+                  <Chip label={`RM ${trade.rm || 'N/A'}`} variant="outlined" size="small" />
+                  <Chip label={`Sales ${trade.sales || 'N/A'}`} variant="outlined" size="small" />
                 </Stack>
               </Stack>
 

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
-import { loginUser, submitTrade } from '../api/client';
+import { fetchTrades, loginUser, submitTrade } from '../api/client';
 import { createDemoUser, sampleTrades } from '../data/mockData';
 
 const USER_STORAGE_KEY = 'fx-trading-app:user';
@@ -14,6 +14,27 @@ function readJsonStorage(storage, key, fallbackValue) {
   } catch (error) {
     return fallbackValue;
   }
+}
+
+function sortTrades(trades) {
+  return [...trades].sort((left, right) => new Date(right.bookedAt || 0).getTime() - new Date(left.bookedAt || 0).getTime());
+}
+
+function mergeTrades(serverTrades = [], currentTrades = []) {
+  const tradesById = new Map();
+
+  [...currentTrades, ...serverTrades].forEach((trade) => {
+    if (!trade?.id) {
+      return;
+    }
+
+    tradesById.set(trade.id, {
+      ...tradesById.get(trade.id),
+      ...trade,
+    });
+  });
+
+  return sortTrades([...tradesById.values()]);
 }
 
 function UserProvider({ children }) {
@@ -33,6 +54,22 @@ function UserProvider({ children }) {
     localStorage.setItem(TRADE_STORAGE_KEY, JSON.stringify(trades));
   }, [trades]);
 
+  const syncTrades = useCallback(async () => {
+    try {
+      const liveTrades = await fetchTrades();
+      setTrades((currentTrades) => mergeTrades(liveTrades, currentTrades));
+    } catch (error) {
+      // Keep the locally stored blotter when the API is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    syncTrades();
+
+    const intervalId = window.setInterval(syncTrades, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [syncTrades]);
+
   const login = useCallback(async (credentials) => {
     const authenticatedUser = await loginUser(credentials);
     setUserDetails(authenticatedUser);
@@ -50,24 +87,25 @@ function UserProvider({ children }) {
   }, []);
 
   const bookTrade = useCallback(async (tradeDraft) => {
-    let bookingMode = 'local';
+    let bookedTrade;
 
     try {
-      await submitTrade(tradeDraft);
-      bookingMode = 'live';
+      bookedTrade = await submitTrade({
+        ...tradeDraft,
+        executionType: tradeDraft.executionType || 'MARKET',
+      });
     } catch (error) {
-      bookingMode = 'local';
+      bookedTrade = {
+        ...tradeDraft,
+        id: tradeDraft.id || `FX-${Date.now()}`,
+        status: 'BOOKED',
+        bookingMode: 'local',
+        executionType: tradeDraft.executionType || 'MARKET',
+        bookedAt: new Date().toISOString(),
+      };
     }
 
-    const bookedTrade = {
-      ...tradeDraft,
-      id: tradeDraft.id || `FX-${Date.now()}`,
-      status: 'BOOKED',
-      bookingMode,
-      bookedAt: new Date().toISOString(),
-    };
-
-    setTrades((currentTrades) => [bookedTrade, ...currentTrades]);
+    setTrades((currentTrades) => mergeTrades([bookedTrade], currentTrades));
     return bookedTrade;
   }, []);
 
