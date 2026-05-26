@@ -10,18 +10,39 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
+    <properties>
+        <ui.dist.dir>${project.basedir}/fx-trading-app/dist</ui.dist.dir>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${ui.dist.dir}</directory>
+                <targetPath>static</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.fxtradingui.FxTradingUiApplication</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>

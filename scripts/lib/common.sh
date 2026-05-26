@@ -170,6 +170,47 @@ service_all_ports() {
   echo "$(service_port "$service") $(service_additional_ports "$service")"
 }
 
+resolve_service_jar() {
+  local service="$1"
+  local pattern
+  local matches=()
+  local candidate
+
+  case "$service" in
+    auth) pattern="$PARENT_POM_DIR/fx-auth-rs/target/fx-auth-rs-*.jar" ;;
+    publisher) pattern="$PARENT_POM_DIR/fx-rate-publisher/target/fx-rate-publisher-*.jar" ;;
+    pricing) pattern="$PARENT_POM_DIR/fx-pricing-rs/target/fx-pricing-rs-*.jar" ;;
+    ui) pattern="$PARENT_POM_DIR/fx-trading-ui/target/fx-trading-ui-*.jar" ;;
+    *) return 1 ;;
+  esac
+
+  shopt -s nullglob
+  matches=( $pattern )
+  shopt -u nullglob
+
+  for candidate in "${matches[@]}"; do
+    if [[ "$candidate" != *.jar.original && "$candidate" != *-plain.jar ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+require_packaged_service_jar() {
+  local service="$1"
+  local jar_path
+
+  jar_path="$(resolve_service_jar "$service" 2>/dev/null || true)"
+  if [[ -z "$jar_path" || ! -f "$jar_path" ]]; then
+    log_msg ERROR "Packaged jar for $(service_display_name "$service") was not found. Run scripts/build-package-full-stack.sh first."
+    return 1
+  fi
+
+  echo "$jar_path"
+}
+
 write_meta_file() {
   local service="$1"
   local log_file="$2"

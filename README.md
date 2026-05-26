@@ -11,6 +11,39 @@ This repository contains a multi-service FX trading demo stack:
 
 The repository now includes managed bash scripts with exhaustive logs, PID tracking, and port checks under `scripts/`.
 
+ ## Packaged Spring Boot full-stack flow
+
+The stack can now be built and run fully as packaged Spring Boot applications, including the frontend.
+The Vite UI bundle is copied into the `fx-trading-ui` Spring Boot jar and served on port `5173`, while `/auth-api/...` and `/pricing-api/...` are proxied to the backend services from that same UI application.
+
+### Build and package every service
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/build-package-full-stack.sh
+```
+
+### Start the packaged Spring Boot jars
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/start-full-stack-packaged.sh
+```
+
+### One command: package and run everything
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/package-and-run-full-stack.sh
+```
+
+### Optional skip flags during packaging
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+SKIP_UI_TESTS=true SKIP_MAVEN_TESTS=true bash scripts/build-package-full-stack.sh
+```
+
 ### Start everything
 
 ```bash
@@ -25,6 +58,27 @@ This builds the Vite UI and serves `dist/` through a lightweight SPA-aware stati
 ```bash
 cd "/Users/shailesh/codebase-new/fx-trading-app"
 bash scripts/start-full-stack-prod.sh
+```
+
+### Stop the production-oriented stack
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/stop-full-stack-prod.sh
+```
+
+### Check production-oriented stack status
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/status-full-stack-prod.sh
+```
+
+### Restart the production-oriented stack
+
+```bash
+cd "/Users/shailesh/codebase-new/fx-trading-app"
+bash scripts/restart-full-stack-prod.sh
 ```
 
 ### Check status
