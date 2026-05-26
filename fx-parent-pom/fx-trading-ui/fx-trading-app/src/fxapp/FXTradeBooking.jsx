@@ -11,6 +11,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import DoneAllRoundedIcon from '@mui/icons-material/DoneAllRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
@@ -23,6 +24,7 @@ import UserContext from './UserContext';
 const tenorOptions = ['SP', '1W', '1M', '3M', '6M', '1Y'];
 const directionOptions = ['Buy', 'Sell'];
 const quoteDurationSeconds = 30;
+const DEFAULT_CUSTOMER_NAME = fallbackCustomers[0]?.name || 'Default customer';
 
 function getMarketPrice(direction, rate) {
   if (!rate) {
@@ -50,7 +52,7 @@ function buildInitialForm(quote, direction, launchState = {}) {
     price: getMarketPrice(direction || 'Buy', quote),
     direction: direction || 'Buy',
     dealtCurrency: launchState.dealtCurrency || getCurrencyCodes(quote?.ccyPair).base || '',
-    customer: '',
+    customer: launchState.customer || DEFAULT_CUSTOMER_NAME,
     rm: '',
     sales: '',
     tradeDate: today,
@@ -80,7 +82,7 @@ function FXTradeBooking() {
       valueDate: incomingValueDate,
     })
   );
-  const [customers, setCustomers] = useState(fallbackCustomers);
+  const [, setCustomers] = useState(fallbackCustomers);
   const [relationshipManagers, setRelationshipManagers] = useState(fallbackRelationshipManagers);
   const [salesPeople, setSalesPeople] = useState(fallbackSales);
   const [message, setMessage] = useState('');
@@ -125,6 +127,11 @@ function FXTradeBooking() {
       setCustomers(customerList);
       setRelationshipManagers(rmList);
       setSalesPeople(salesList);
+
+      setFormData((current) => ({
+        ...current,
+        customer: current.customer || customerList[0]?.name || DEFAULT_CUSTOMER_NAME,
+      }));
     }
 
     loadLookups();
@@ -232,9 +239,9 @@ function FXTradeBooking() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!formData.ccyPair || !formData.customer || !formData.rm || !formData.sales || !formData.price) {
+    if (!formData.ccyPair || !formData.rm || !formData.sales || !formData.price) {
       setSeverity('error');
-      setMessage('Complete the market, customer, and coverage fields before booking.');
+      setMessage('Complete the market and coverage fields before booking.');
       return;
     }
 
@@ -262,36 +269,27 @@ function FXTradeBooking() {
     }
   };
 
+  const bookingPaperSx = {
+    borderRadius: 3,
+    border: '1px solid',
+    borderColor: (theme) => alpha(theme.palette.primary.light, 0.18),
+    bgcolor: (theme) => alpha(theme.palette.common.white, 0.05),
+    backgroundImage: (theme) => `linear-gradient(180deg, ${alpha(theme.palette.common.white, 0.08)} 0%, ${alpha(theme.palette.primary.light, 0.04)} 100%)`,
+    boxShadow: (theme) => `0 18px 40px ${alpha(theme.palette.common.black, 0.2)}`,
+    backdropFilter: 'blur(12px)',
+  };
+
+  const quoteProtectionValue = Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100);
+
   return (
-    <Stack spacing={3}>
-      <Paper sx={{ p: { xs: 2.25, md: 3 } }}>
-        <Stack spacing={1.5}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ justifyContent: 'space-between' }}>
-            <Box>
-              <Typography variant="h4">FX trade booking</Typography>
-              <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Review trade terms, confirm coverage, and submit the ticket to the blotter.
-              </Typography>
-            </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <Button variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={repriceTicket}>
-                Reprice
-              </Button>
-              <Button variant="text" startIcon={<ReceiptLongRoundedIcon />} onClick={() => navigate('/app/blotter')}>
-                View blotter
-              </Button>
-            </Stack>
-          </Stack>
-
-          {message ? <Alert severity={severity}>{message}</Alert> : null}
-
-          <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
-            <Chip label={isDemo ? 'Demo booking support active' : 'Live booking route available'} color={isDemo ? 'warning' : 'primary'} />
-            <Chip label={`Trader: ${userDetails?.username || 'demo.trader'}`} variant="outlined" />
-            <Chip label={activeRate ? `${activeRate.ccyPair} ${activeRate.tenor}` : 'Manual ticket'} variant="outlined" />
-          </Stack>
-        </Stack>
-      </Paper>
+    <Stack
+      spacing={2.25}
+      sx={{
+        '& .MuiInputBase-root': {
+          bgcolor: (theme) => alpha(theme.palette.common.white, 0.04),
+        },
+      }}
+    >
 
       <Box
         sx={{
@@ -301,47 +299,48 @@ function FXTradeBooking() {
           alignItems: 'start',
         }}
       >
-        <Paper component="form" onSubmit={handleSubmit} sx={{ p: { xs: 2, md: 2.5 } }}>
-          <Stack spacing={2.5}>
+        <Paper component="form" onSubmit={handleSubmit} sx={{ ...bookingPaperSx, p: { xs: 1.75, md: 2.25 } }}>
+          <Stack spacing={2}>
             <Box>
-              <Typography variant="h6">1. Market terms</Typography>
-              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>1. Market terms</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
                 Pre-filled from the quote card when launched from rates, but still editable for manual workflow.
               </Typography>
             </Box>
 
-            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' } }}>
-              <TextField select label="Currency pair" name="ccyPair" value={formData.ccyPair} onChange={handleFieldChange}>
+            <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' } }}>
+              <TextField size="small" select label="Currency pair" name="ccyPair" value={formData.ccyPair} onChange={handleFieldChange}>
                 {rates.map((rate) => (
                   <MenuItem key={`${rate.ccyPair}-${rate.tenor}`} value={rate.ccyPair}>
                     {rate.ccyPair}
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField select label="Tenor" name="tenor" value={formData.tenor} onChange={handleFieldChange}>
+              <TextField size="small" select label="Tenor" name="tenor" value={formData.tenor} onChange={handleFieldChange}>
                 {tenorOptions.map((option) => (
                   <MenuItem key={option} value={option}>
                     {option}
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField select label="Direction" name="direction" value={formData.direction} onChange={handleFieldChange}>
+              <TextField size="small" select label="Direction" name="direction" value={formData.direction} onChange={handleFieldChange}>
                 {directionOptions.map((option) => (
                   <MenuItem key={option} value={option}>
                     {option}
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField label="Quantity" name="qty" value={formData.qty} onChange={handleFieldChange} type="number" />
-              <TextField select label="Dealt currency" name="dealtCurrency" value={formData.dealtCurrency} onChange={handleFieldChange}>
+              <TextField size="small" label="Quantity" name="qty" value={formData.qty} onChange={handleFieldChange} type="number" />
+              <TextField size="small" select label="Dealt currency" name="dealtCurrency" value={formData.dealtCurrency} onChange={handleFieldChange}>
                 {dealtCurrencyOptions.map((currency) => (
                   <MenuItem key={currency} value={currency}>
                     {currency}
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField label="Price" name="price" value={formData.price} onChange={handleFieldChange} type="number" />
+              <TextField size="small" label="Price" name="price" value={formData.price} onChange={handleFieldChange} type="number" />
               <TextField
+                size="small"
                 label="Trade date"
                 name="tradeDate"
                 value={formData.tradeDate}
@@ -350,6 +349,7 @@ function FXTradeBooking() {
                 slotProps={{ inputLabel: { shrink: true } }}
               />
               <TextField
+                size="small"
                 label="Settlement date"
                 name="settlementDate"
                 value={formData.settlementDate}
@@ -360,50 +360,74 @@ function FXTradeBooking() {
             </Box>
 
             <Box>
-              <Typography variant="h6">2. Coverage and comments</Typography>
-              <Typography color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>
-                Capture who owns the relationship and what the trade is solving for the client.
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>2. Coverage and comments</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35, mb: 1 }}>
+                Coverage stays editable while customer routing defaults automatically for faster capture.
               </Typography>
-              <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' } }}>
-                <TextField select label="Customer" name="customer" value={formData.customer} onChange={handleFieldChange}>
-                  {customers.map((customer) => (
-                    <MenuItem key={customer.id} value={customer.name}>
-                      {customer.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField select label="Relationship manager" name="rm" value={formData.rm} onChange={handleFieldChange}>
+              <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' } }}>
+                <TextField size="small" select label="Relationship manager" name="rm" value={formData.rm} onChange={handleFieldChange}>
                   {relationshipManagers.map((rm) => (
                     <MenuItem key={rm.id} value={rm.name}>
                       {rm.name}
                     </MenuItem>
                   ))}
                 </TextField>
-                <TextField select label="Sales" name="sales" value={formData.sales} onChange={handleFieldChange}>
+                <TextField size="small" select label="Sales" name="sales" value={formData.sales} onChange={handleFieldChange}>
                   {salesPeople.map((salesPerson) => (
                     <MenuItem key={salesPerson.id} value={salesPerson.name}>
                       {salesPerson.name}
                     </MenuItem>
                   ))}
                 </TextField>
-                <Box />
                 <TextField
+                  size="small"
                   label="Comments"
                   name="comments"
                   value={formData.comments}
                   onChange={handleFieldChange}
                   multiline
-                  rows={4}
+                  rows={3}
                   sx={{ gridColumn: { xs: 'auto', md: '1 / -1' } }}
                 />
               </Box>
             </Box>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ justifyContent: 'space-between' }}>
-              <Button type="button" variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={repriceTicket}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2.5,
+                border: '1px solid',
+                borderColor: quoteExpired ? 'error.main' : (theme) => alpha(theme.palette.primary.light, 0.24),
+                bgcolor: (theme) => alpha(theme.palette.common.white, 0.06),
+              }}
+            >
+              <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.9 }}>
+                <Typography variant="subtitle2">Quote protection</Typography>
+                <Typography variant="body2" color={quoteExpired ? 'error.main' : 'primary.light'}>
+                  {quoteExpired ? '0s remaining' : `${quoteTimeLeft}s remaining`}
+                </Typography>
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={quoteProtectionValue}
+                color={quoteExpired ? 'error' : 'primary'}
+                sx={{
+                  width: '100%',
+                  height: 8,
+                  borderRadius: 999,
+                  bgcolor: (theme) => alpha(theme.palette.common.white, 0.08),
+                }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                The streamed price remains bookable for up to {quoteDurationSeconds} seconds before repricing is required.
+              </Typography>
+            </Box>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between' }}>
+              <Button size="small" type="button" variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={repriceTicket}>
                 Refresh quote timer
               </Button>
-              <Button type="submit" variant="contained" startIcon={<DoneAllRoundedIcon />} disabled={isSubmitting || quoteExpired}>
+              <Button size="small" type="submit" variant="contained" startIcon={<DoneAllRoundedIcon />} disabled={isSubmitting || quoteExpired} sx={{ minWidth: { sm: 168 } }}>
                 {isSubmitting ? 'Booking trade…' : 'Book trade'}
               </Button>
             </Stack>
@@ -411,9 +435,9 @@ function FXTradeBooking() {
         </Paper>
 
         <Stack spacing={2} sx={{ position: { xl: 'sticky' }, top: { xl: 104 } }}>
-          <Paper sx={{ p: 2.25 }}>
+          <Paper sx={{ ...bookingPaperSx, p: 2 }}>
             <Typography variant="h6">Quote summary</Typography>
-            <Stack spacing={1.25} sx={{ mt: 1.5 }}>
+            <Stack spacing={1} sx={{ mt: 1.25 }}>
               <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                 <Typography color="text.secondary">Pair</Typography>
                 <Typography>{formData.ccyPair || 'Select a pair'}</Typography>
@@ -434,38 +458,13 @@ function FXTradeBooking() {
                 <Typography color="text.secondary">Live price</Typography>
                 <Typography>{activeRate ? formatRate(formData.price) : 'Manual'}</Typography>
               </Stack>
+              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                <Typography color="text.secondary">Customer</Typography>
+                <Typography>{formData.customer || DEFAULT_CUSTOMER_NAME}</Typography>
+              </Stack>
             </Stack>
           </Paper>
 
-          <Paper sx={{ p: 2.25 }}>
-            <Typography variant="h6">Quote protection</Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-              The current quote remains valid for {quoteDurationSeconds} seconds before repricing is required.
-            </Typography>
-
-            <Box sx={{ mt: 1.75 }}>
-              <LinearProgress
-                variant="determinate"
-                value={Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100)}
-                color={quoteExpired ? 'error' : 'primary'}
-              />
-              <Typography variant="body2" color={quoteExpired ? 'error.main' : 'text.secondary'} sx={{ mt: 1 }}>
-                {quoteExpired ? 'Quote expired. Reprice required.' : `${quoteTimeLeft}s remaining`}
-              </Typography>
-            </Box>
-          </Paper>
-
-          <Paper sx={{ p: 2.25 }}>
-            <Typography variant="h6">Execution notes</Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-              If `/api/bookTrade` is unavailable, the ticket is stored locally and still appears in the blotter.
-            </Typography>
-            <Stack direction="row" gap={1} sx={{ mt: 1.5, flexWrap: 'wrap' }}>
-              <Chip label={activeRate?.source || 'MANUAL'} size="small" variant="outlined" />
-              <Chip label={activeRate?.status || 'READY'} size="small" color={quoteExpired ? 'error' : 'success'} />
-              <Chip label={`Settle ${formData.settlementDate}`} size="small" variant="outlined" />
-            </Stack>
-          </Paper>
         </Stack>
       </Box>
     </Stack>
