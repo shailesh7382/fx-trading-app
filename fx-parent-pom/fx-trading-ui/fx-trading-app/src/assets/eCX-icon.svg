@@ -1,0 +1,27 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ecx-bg" x1="22" y1="18" x2="138" y2="142" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2C82D6"/>
+      <stop offset="0.56" stop-color="#005EB8"/>
+      <stop offset="1" stop-color="#00488D"/>
+    </linearGradient>
+    <linearGradient id="ecx-glow" x1="36" y1="32" x2="124" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="144" height="144" rx="34" fill="#06111F"/>
+  <rect x="14" y="14" width="132" height="132" rx="28" fill="url(#ecx-bg)"/>
+  <rect x="22" y="22" width="116" height="116" rx="24" fill="url(#ecx-glow)"/>
+  <text
+    x="80"
+    y="92"
+    text-anchor="middle"
+    fill="#F5F7FB"
+    font-family="Inter, SF Pro Display, Arial, sans-serif"
+    font-size="44"
+    font-weight="800"
+    letter-spacing="-1.5"
+  >eCX</text>
+</svg>
+

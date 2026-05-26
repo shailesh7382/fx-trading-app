@@ -34,6 +34,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import UserContext from './UserContext';
 import useWorkspaceData from './useWorkspaceData';
 import { formatDateTime, formatRelativeTime } from '../utils/formatters';
+import ecxIcon from '../assets/eCX-icon.svg';
 
 const drawerWidth = 292;
 
@@ -96,12 +97,17 @@ function FXTradingApp() {
   const drawerContent = (
     <Stack sx={{ height: '100%' }}>
       <Box sx={{ p: 2.25 }}>
-        <Typography variant="overline" color="primary.main">
-          FX Trading Platform
-        </Typography>
-        <Typography variant="h5" sx={{ mt: 0.5 }}>
-          Trading Application
-        </Typography>
+        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+          <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 42, height: 42, flexShrink: 0 }} />
+          <Box>
+            <Typography variant="overline" color="primary.main">
+              eCX
+            </Typography>
+            <Typography variant="h5" sx={{ mt: 0.2 }}>
+              Trading Application
+            </Typography>
+          </Box>
+        </Stack>
         <Typography color="text.secondary" sx={{ mt: 1.25 }}>
           Access pricing, booking, blotter, analysis, and portfolio screens from one interface.
         </Typography>

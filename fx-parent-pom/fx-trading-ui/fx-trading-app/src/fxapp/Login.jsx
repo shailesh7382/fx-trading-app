@@ -15,11 +15,11 @@ import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import CandlestickChartRoundedIcon from '@mui/icons-material/CandlestickChartRounded';
-import PhoneIphoneRoundedIcon from '@mui/icons-material/PhoneIphoneRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import { Navigate, useNavigate } from 'react-router-dom';
 import UserContext from './UserContext';
 import { extractApiMessage } from '../api/client';
+import ecxIcon from '../assets/eCX-icon.svg';
 
 const featureCards = [
   {
@@ -93,9 +93,12 @@ function Login() {
             />
             <Stack spacing={3} sx={{ position: 'relative' }}>
               <Box>
-                <Chip icon={<ShieldRoundedIcon />} label="FX Trading Application" color="primary" sx={{ mb: 2 }} />
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
+                  <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 52, height: 52, flexShrink: 0 }} />
+                  <Chip icon={<ShieldRoundedIcon />} label="eCX Trading Application" color="primary" />
+                </Stack>
                 <Typography variant="h2" sx={{ maxWidth: 720, fontSize: { xs: '2.3rem', md: '3.5rem' } }}>
-                  FX Trading Platform
+                  eCX FX Trading Platform
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 680, mt: 1.5, fontSize: { xs: '1rem', md: '1.1rem' } }}>
                   Access pricing, booking, blotter, market analysis, and portfolio views from a single trading interface.

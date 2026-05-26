@@ -1,14 +1,27 @@
 import { alpha, createTheme } from '@mui/material/styles';
 
+const brandBlue = '#005EB8';
+const brandBlueLight = '#2C82D6';
+const brandBlueDark = '#00488D';
+const brandBlueGlow = '#4FA2F0';
+const ink900 = '#030A14';
+const ink850 = '#06111F';
+const ink800 = '#081827';
+const ink750 = '#0B1E30';
+const ink700 = '#10263C';
+const borderTint = alpha('#8FBDE8', 0.16);
+
 const appTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#005EB8',
+      main: brandBlue,
+      light: brandBlueLight,
+      dark: brandBlueDark,
       contrastText: '#f5f7fb',
     },
     secondary: {
-      main: '#6ea8ff',
+      main: brandBlueGlow,
     },
     success: {
       main: '#2bd576',
@@ -20,14 +33,14 @@ const appTheme = createTheme({
       main: '#ffc857',
     },
     background: {
-      default: '#07111f',
-      paper: '#0b1728',
+      default: ink850,
+      paper: ink750,
     },
     text: {
       primary: '#f5f7fb',
-      secondary: '#9bb0c7',
+      secondary: '#A7BED8',
     },
-    divider: alpha('#d9e4f5', 0.08),
+    divider: borderTint,
   },
   shape: {
     borderRadius: 20,
@@ -57,7 +70,7 @@ const appTheme = createTheme({
       styleOverrides: {
         body: {
           background:
-            'radial-gradient(circle at top, rgba(0, 94, 184, 0.22), transparent 28%), linear-gradient(180deg, #07111f 0%, #040913 100%)',
+            `radial-gradient(circle at top, ${alpha(brandBlue, 0.28)}, transparent 30%), radial-gradient(circle at top right, ${alpha(brandBlueGlow, 0.16)}, transparent 24%), linear-gradient(180deg, ${ink850} 0%, ${ink900} 100%)`,
         },
       },
     },
@@ -65,9 +78,10 @@ const appTheme = createTheme({
       styleOverrides: {
         root: {
           backgroundImage: 'none',
-          border: `1px solid ${alpha('#d9e4f5', 0.08)}`,
+          backgroundColor: alpha(ink750, 0.9),
+          border: `1px solid ${borderTint}`,
           backdropFilter: 'blur(18px)',
-          boxShadow: '0 24px 70px rgba(1, 8, 20, 0.36)',
+          boxShadow: `0 24px 70px ${alpha('#010814', 0.42)}`,
         },
       },
     },
@@ -75,7 +89,8 @@ const appTheme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 24,
-          border: `1px solid ${alpha('#d9e4f5', 0.08)}`,
+          border: `1px solid ${alpha(brandBlueGlow, 0.12)}`,
+          backgroundColor: alpha(ink700, 0.76),
           backgroundImage: 'none',
         },
       },
@@ -88,6 +103,12 @@ const appTheme = createTheme({
         root: {
           borderRadius: 14,
           paddingInline: 16,
+        },
+        containedPrimary: {
+          backgroundImage: `linear-gradient(135deg, ${brandBlueLight} 0%, ${brandBlue} 65%, ${brandBlueDark} 100%)`,
+        },
+        outlined: {
+          borderColor: alpha(brandBlueGlow, 0.28),
         },
       },
     },
@@ -102,6 +123,23 @@ const appTheme = createTheme({
       defaultProps: {
         variant: 'outlined',
         fullWidth: true,
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          backgroundColor: alpha(ink800, 0.82),
+          '&:hover .MuiOutlinedInput-notchedOutline': {
+            borderColor: alpha(brandBlueGlow, 0.3),
+          },
+          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+            borderColor: brandBlueLight,
+            boxShadow: `0 0 0 1px ${alpha(brandBlueLight, 0.18)}`,
+          },
+        },
+        notchedOutline: {
+          borderColor: borderTint,
+        },
       },
     },
   },
