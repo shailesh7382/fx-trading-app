@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchFxPrices, fetchLimitOrders } from '../api/client';
+import { fetchFxPrices, fetchLimitOrders, fetchNotifications } from '../api/client';
 import { getFallbackRates, simulateMarketSnapshot } from '../data/mockData';
 
 function normalizeRates(rawRates, previousRates = []) {
@@ -34,10 +34,16 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
   const [isDemo, setIsDemo] = useState(false);
   const [error, setError] = useState('');
   const [limitOrders, setLimitOrders] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
 
   const refresh = useCallback(async () => {
-    const [ratesResult, limitOrdersResult] = await Promise.allSettled([fetchFxPrices(), fetchLimitOrders()]);
+    const [ratesResult, limitOrdersResult, notificationsResult] = await Promise.allSettled([
+      fetchFxPrices(),
+      fetchLimitOrders(),
+      fetchNotifications({ limit: 12 }),
+    ]);
 
     if (ratesResult.status === 'fulfilled') {
       const liveRates = ratesResult.value;
@@ -63,6 +69,17 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
       setLimitOrders(Array.isArray(limitOrdersResult.value) ? limitOrdersResult.value : []);
     }
 
+    if (notificationsResult.status === 'fulfilled') {
+      const payload = notificationsResult.value || {};
+      const nextNotifications = Array.isArray(payload.notifications)
+        ? payload.notifications
+        : Array.isArray(payload)
+          ? payload
+          : [];
+      setNotifications(nextNotifications);
+      setNotificationCount(Number.isFinite(payload.unreadCount) ? payload.unreadCount : nextNotifications.length);
+    }
+
     setIsLoading(false);
   }, []);
 
@@ -85,6 +102,8 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
     isDemo,
     error,
     limitOrders,
+    notifications,
+    notificationCount,
     lastUpdated,
     refresh,
   };

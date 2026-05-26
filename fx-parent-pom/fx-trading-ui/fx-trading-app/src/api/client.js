@@ -52,6 +52,11 @@ export async function fetchLimitOrders(params = {}) {
   return response.data;
 }
 
+export async function fetchNotifications(params = {}) {
+  const response = await pricingApi.get('/notifications', { params });
+  return response.data;
+}
+
 export async function submitLimitOrder(payload) {
   const response = await pricingApi.post('/limit-orders', payload);
   return response.data;

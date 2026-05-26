@@ -2,6 +2,7 @@ import React, { useContext, useMemo, useState } from 'react';
 import {
   AppBar,
   Avatar,
+  Badge,
   BottomNavigation,
   BottomNavigationAction,
   Box,
@@ -24,10 +25,10 @@ import CandlestickChartRoundedIcon from '@mui/icons-material/CandlestickChartRou
 import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded';
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
-import AccountBalanceWalletRoundedIcon from '@mui/icons-material/AccountBalanceWalletRounded';
 import AddCardRoundedIcon from '@mui/icons-material/AddCardRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
 import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
 import { alpha, useTheme } from '@mui/material/styles';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -39,12 +40,12 @@ import ecxIcon from '../assets/eCX-icon.svg';
 const drawerWidth = 280;
 
 const navigationItems = [
-  { label: 'Rates', path: '/app/rates', icon: <CandlestickChartRoundedIcon /> },
-  { label: 'Limit orders', path: '/app/limit-orders', icon: <PendingActionsRoundedIcon /> },
-  { label: 'Booking', path: '/app/booking', icon: <AddCardRoundedIcon /> },
-  { label: 'Blotter', path: '/app/blotter', icon: <ReceiptLongRoundedIcon /> },
-  { label: 'Analysis', path: '/app/analysis', icon: <InsightsRoundedIcon /> },
-  { label: 'Portfolio', path: '/app/portfolio', icon: <AccountBalanceWalletRoundedIcon /> },
+  { label: 'Rates', path: '/app/rates', icon: CandlestickChartRoundedIcon },
+  { label: 'Limit orders', path: '/app/limit-orders', icon: PendingActionsRoundedIcon },
+  { label: 'Notifications', path: '/app/notifications', icon: NotificationsRoundedIcon, hasBadge: true },
+  { label: 'Booking', path: '/app/booking', icon: AddCardRoundedIcon },
+  { label: 'Blotter', path: '/app/blotter', icon: ReceiptLongRoundedIcon },
+  { label: 'Analysis', path: '/app/analysis', icon: InsightsRoundedIcon },
 ];
 
 const pageTitles = {
@@ -55,6 +56,10 @@ const pageTitles = {
   '/app/limit-orders': {
     title: 'Limit orders',
     subtitle: 'Review active and historical spot limit orders across the desk.',
+  },
+  '/app/notifications': {
+    title: 'Notifications',
+    subtitle: 'Monitor server-side trade alerts, order lifecycle events, and market commentary.',
   },
   '/app/booking': {
     title: 'Booking',
@@ -67,10 +72,6 @@ const pageTitles = {
   '/app/analysis': {
     title: 'Market analysis',
     subtitle: 'Monitor price moves, spread conditions, and liquidity.',
-  },
-  '/app/portfolio': {
-    title: 'Portfolio',
-    subtitle: 'Summarize exposures and client concentration from booked trades.',
   },
 };
 
@@ -87,6 +88,7 @@ function FXTradingApp() {
   const userDisplayName = userDetails?.username || 'Trader';
   const userRole = userDetails?.userType || 'FX Desk';
   const userRegion = userDetails?.region || 'Global';
+  const notificationCount = workspaceData.notificationCount || 0;
 
   const userSummaryItems = useMemo(
     () => [
@@ -96,6 +98,21 @@ function FXTradingApp() {
     ],
     [userDetails?.email, userDetails?.lastLoginTimestamp, workspaceData.lastUpdated]
   );
+
+  const renderNavigationIcon = (item) => {
+    const Icon = item.icon;
+    const iconNode = <Icon />;
+
+    if (!item.hasBadge) {
+      return iconNode;
+    }
+
+    return (
+      <Badge badgeContent={notificationCount} color="error" max={99} invisible={!notificationCount}>
+        {iconNode}
+      </Badge>
+    );
+  };
 
   const drawerContent = (
     <Stack sx={{ height: '100%' }}>
@@ -224,7 +241,7 @@ function FXTradingApp() {
                   justifyContent: 'center',
                 }}
               >
-                {item.icon}
+                {renderNavigationIcon(item)}
               </ListItemIcon>
               <ListItemText primary={item.label} />
             </ListItemButton>
@@ -266,6 +283,13 @@ function FXTradingApp() {
           </Box>
 
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Tooltip title="Notifications">
+              <IconButton color="inherit" onClick={() => navigate('/app/notifications')}>
+                <Badge badgeContent={notificationCount} color="error" max={99} invisible={!notificationCount}>
+                  <NotificationsRoundedIcon />
+                </Badge>
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Refresh live market data">
               <IconButton color="inherit" onClick={workspaceData.refresh}>
                 <SyncRoundedIcon />
@@ -334,7 +358,7 @@ function FXTradingApp() {
             sx={{ bgcolor: 'transparent' }}
           >
             {navigationItems.slice(0, 5).map((item) => (
-              <BottomNavigationAction key={item.path} label={item.label} value={item.path} icon={item.icon} />
+              <BottomNavigationAction key={item.path} label={item.label} value={item.path} icon={renderNavigationIcon(item)} />
             ))}
           </BottomNavigation>
         </Paper>

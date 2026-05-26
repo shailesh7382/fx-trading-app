@@ -5,10 +5,10 @@ import Login from './fxapp/Login';
 import FXTradingApp from './fxapp/FXTradingApp';
 import FXRateGrid from './fxapp/FXRateGrid';
 import FXLimitOrders from './fxapp/FXLimitOrders';
+import FXNotifications from './fxapp/FXNotifications.jsx';
 import FXTradeBooking from './fxapp/FXTradeBooking';
 import FXTradeBlotter from './fxapp/FXTradeBlotter';
 import FXMarketAnalysis from './fxapp/FXMarketAnalysis';
-import FXPortfolio from './fxapp/FXPortfolio';
 import ProtectedRoute from './fxapp/ProtectedRoute';
 import UserContext from './fxapp/UserContext';
 import { UserProvider } from './fxapp/UserProvider';
@@ -32,10 +32,10 @@ function AppRoutes() {
           <Route index element={<Navigate to="rates" replace />} />
           <Route path="rates" element={<FXRateGrid />} />
           <Route path="limit-orders" element={<FXLimitOrders />} />
+          <Route path="notifications" element={<FXNotifications />} />
           <Route path="booking" element={<FXTradeBooking />} />
           <Route path="blotter" element={<FXTradeBlotter />} />
           <Route path="analysis" element={<FXMarketAnalysis />} />
-          <Route path="portfolio" element={<FXPortfolio />} />
         </Route>
         <Route path="*" element={<Navigate to={userDetails ? '/app' : '/'} replace />} />
       </Routes>
