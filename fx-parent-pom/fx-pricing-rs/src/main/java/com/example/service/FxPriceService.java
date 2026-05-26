@@ -1,5 +1,6 @@
 package com.example.service;
 
+import com.example.FxPriceDTO;
 import com.example.MarketData;
 import com.example.MarketDataUpdateListener;
 import com.example.Tenor;
@@ -10,7 +11,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class FxPriceService implements MarketDataUpdateListener {
@@ -36,6 +42,56 @@ public class FxPriceService implements MarketDataUpdateListener {
 
     public List<FxPrice> getAllPrices() {
         return fxPriceRepository.findAll();
+    }
+
+    public List<FxPriceDTO> getGridPrices(String search, String tenor, String sortBy, int limit) {
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+        String normalizedTenor = tenor == null || tenor.isBlank() ? "SP" : tenor.trim().toUpperCase(Locale.ROOT);
+        int safeLimit = Math.max(1, Math.min(limit, 12));
+
+        Map<String, FxPrice> groupedPrices = getAllPrices().stream()
+                .filter(fxPrice -> normalizedSearch.isEmpty() || fxPrice.getCcyPair().toLowerCase(Locale.ROOT).contains(normalizedSearch))
+                .filter(fxPrice -> "ALL".equals(normalizedTenor) || fxPrice.getTenorLabel().equalsIgnoreCase(normalizedTenor))
+                .collect(Collectors.toMap(
+                        fxPrice -> fxPrice.getCcyPair() + "|" + fxPrice.getTenorLabel(),
+                        fxPrice -> fxPrice,
+                        this::pickDisplayPrice,
+                        LinkedHashMap::new
+                ));
+
+        return groupedPrices.values().stream()
+                .sorted(buildGridComparator(sortBy))
+                .limit(safeLimit)
+                .map(FxPriceDTO::new)
+                .collect(Collectors.toList());
+    }
+
+    private FxPrice pickDisplayPrice(FxPrice left, FxPrice right) {
+        Comparator<FxPrice> comparator = Comparator
+                .comparing(FxPrice::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(FxPrice::getQty, Comparator.reverseOrder());
+
+        return comparator.compare(left, right) >= 0 ? left : right;
+    }
+
+    private Comparator<FxPrice> buildGridComparator(String sortBy) {
+        String normalizedSort = sortBy == null ? "pair" : sortBy.trim().toLowerCase(Locale.ROOT);
+
+        switch (normalizedSort) {
+            case "updated":
+                return Comparator.comparing(FxPrice::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(FxPrice::getCcyPair);
+            case "spread":
+                return Comparator.comparingDouble(this::getSpread)
+                        .thenComparing(FxPrice::getCcyPair);
+            default:
+                return Comparator.comparing(FxPrice::getCcyPair)
+                        .thenComparing(FxPrice::getTenorLabel);
+        }
+    }
+
+    private double getSpread(FxPrice fxPrice) {
+        return Math.abs(fxPrice.getAsk() - fxPrice.getBid());
     }
 
     public FxPrice updatePrice(FxPrice fxPrice) {

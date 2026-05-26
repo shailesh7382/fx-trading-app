@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -16,52 +16,193 @@ import {
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
-import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
-import TrendingFlatRoundedIcon from '@mui/icons-material/TrendingFlatRounded';
-import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import { useNavigate, useOutletContext } from 'react-router-dom';
+import { fetchFxGrid } from '../api/client';
 import { downloadCsv } from '../utils/export';
-import { formatNotional, formatRate, formatRelativeTime, formatSignedDelta } from '../utils/formatters';
+import { formatRelativeTime, getRateDisplayParts } from '../utils/formatters';
 
-const tenorOptions = ['ALL', 'SP', '1M', '3M', '6M', '1Y'];
+const flashDurationMs = 900;
 
-function deltaIcon(delta) {
-  if (delta > 0) return <TrendingUpRoundedIcon fontSize="small" color="success" />;
-  if (delta < 0) return <TrendingDownRoundedIcon fontSize="small" color="error" />;
-  return <TrendingFlatRoundedIcon fontSize="small" color="disabled" />;
+function getRateSignal(currentValue, previousValue) {
+  if (previousValue == null || currentValue === previousValue) {
+    return null;
+  }
+
+  return currentValue > previousValue ? 'up' : 'down';
+}
+
+function getQuoteTileStyles(baseBackground, signal) {
+  const signalStyles =
+    signal === 'up'
+      ? {
+          borderColor: 'rgba(43, 213, 118, 0.55)',
+          boxShadow: '0 0 0 1px rgba(43, 213, 118, 0.22), 0 0 18px rgba(43, 213, 118, 0.14)',
+          transform: 'translateY(-1px)',
+        }
+      : signal === 'down'
+        ? {
+            borderColor: 'rgba(255, 107, 129, 0.55)',
+            boxShadow: '0 0 0 1px rgba(255, 107, 129, 0.22), 0 0 18px rgba(255, 107, 129, 0.14)',
+            transform: 'translateY(-1px)',
+          }
+        : {};
+
+  return {
+    p: 1.1,
+    borderRadius: 0.75,
+    bgcolor: baseBackground,
+    border: '1px solid transparent',
+    transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+    ...signalStyles,
+  };
+}
+
+function RateDisplay({ value, accentColor }) {
+  const { major, significant, pipette } = getRateDisplayParts(value);
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        fontFamily: 'Roboto Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
+      }}
+    >
+      <Typography
+        component="span"
+        sx={{ fontSize: { xs: '0.95rem', md: '1.05rem' }, fontWeight: 500, color: 'text.secondary', mt: 0.5 }}
+      >
+        {major}
+      </Typography>
+      <Typography
+        component="span"
+        sx={{ fontSize: { xs: '2.45rem', md: '3.25rem' }, fontWeight: 800, letterSpacing: '0.01em', color: accentColor }}
+      >
+        {significant}
+      </Typography>
+      {pipette ? (
+        <Typography component="span" sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, fontWeight: 700, mt: 0.4, color: 'text.secondary' }}>
+          {pipette}
+        </Typography>
+      ) : null}
+    </Box>
+  );
 }
 
 function FXRateGrid() {
   const navigate = useNavigate();
   const { rates, isDemo, error, isLoading, lastUpdated, refresh } = useOutletContext();
   const [search, setSearch] = useState('');
-  const [tenorFilter, setTenorFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('pair');
+  const maxVisibleRates = 6;
+  const [serverRates, setServerRates] = useState([]);
+  const [gridRequestFailed, setGridRequestFailed] = useState(false);
+  const [isGridLoading, setIsGridLoading] = useState(false);
+  const previousRatesRef = useRef(new Map());
+  const [flashSignals, setFlashSignals] = useState({});
 
-  const filteredRates = useMemo(() => {
+  const fallbackRates = useMemo(() => {
     const loweredSearch = search.trim().toLowerCase();
 
     return [...rates]
-      .filter((rate) => (tenorFilter === 'ALL' ? true : rate.tenor === tenorFilter))
       .filter((rate) => (loweredSearch ? rate.ccyPair.toLowerCase().includes(loweredSearch) : true))
       .sort((left, right) => {
-        if (sortBy === 'spread') return left.spreadPips - right.spreadPips;
         if (sortBy === 'updated') return new Date(right.updatedAt) - new Date(left.updatedAt);
-        if (sortBy === 'move') return Math.abs(right.bidDelta) - Math.abs(left.bidDelta);
         return left.ccyPair.localeCompare(right.ccyPair);
       });
-  }, [rates, search, sortBy, tenorFilter]);
+  }, [rates, search, sortBy]);
+
+  useEffect(() => {
+    let isMounted = true;
+    let loadTimer;
+
+    async function loadGridRates() {
+      setIsGridLoading(true);
+
+      try {
+        const data = await fetchFxGrid({
+          search,
+          sort: sortBy,
+          limit: maxVisibleRates,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        setServerRates(data);
+        setGridRequestFailed(false);
+      } catch (gridError) {
+        if (!isMounted) {
+          return;
+        }
+
+        setServerRates([]);
+        setGridRequestFailed(true);
+      } finally {
+        if (isMounted) {
+          setIsGridLoading(false);
+        }
+      }
+    }
+
+    loadTimer = window.setTimeout(loadGridRates, 120);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(loadTimer);
+    };
+  }, [maxVisibleRates, search, sortBy, lastUpdated]);
+
+  const visibleRates = gridRequestFailed ? fallbackRates.slice(0, maxVisibleRates) : serverRates;
+
+  useEffect(() => {
+    const nextSignals = {};
+
+    visibleRates.forEach((rate) => {
+      const key = `${rate.ccyPair}-${rate.tenor}`;
+      const previous = previousRatesRef.current.get(key);
+      const bidSignal = getRateSignal(rate.bid, previous?.bid);
+      const askSignal = getRateSignal(rate.ask, previous?.ask);
+
+      if (bidSignal || askSignal) {
+        nextSignals[key] = {
+          bid: bidSignal,
+          ask: askSignal,
+        };
+      }
+    });
+
+    previousRatesRef.current = new Map(
+      visibleRates.map((rate) => [`${rate.ccyPair}-${rate.tenor}`, { bid: rate.bid, ask: rate.ask }])
+    );
+
+    if (!Object.keys(nextSignals).length) {
+      return undefined;
+    }
+
+    setFlashSignals(nextSignals);
+
+    const clearTimer = window.setTimeout(() => {
+      setFlashSignals({});
+    }, flashDurationMs);
+
+    return () => {
+      window.clearTimeout(clearTimer);
+    };
+  }, [visibleRates]);
 
   const downloadExcel = () => {
     downloadCsv(
       'fx-rates-workspace.csv',
-      filteredRates.map((rate) => ({
+      visibleRates.map((rate) => ({
         Pair: rate.ccyPair,
         Tenor: rate.tenor,
         Quantity: rate.qty,
         Bid: rate.bid,
         Ask: rate.ask,
-        SpreadPips: rate.spreadPips,
         Source: rate.source,
         Status: rate.status,
         UpdatedAt: rate.updatedAt,
@@ -71,192 +212,113 @@ function FXRateGrid() {
 
   return (
     <Stack spacing={3}>
-      <Paper sx={{ p: { xs: 2, md: 2.5 } }}>
-        <Stack spacing={2.25}>
+      <Paper sx={{ p: { xs: 1.25, md: 1.5 } }}>
+        <Stack
+          direction={{ xs: 'column', xl: 'row' }}
+          spacing={1}
+          sx={{
+            alignItems: { xs: 'stretch', xl: 'center' },
+            justifyContent: 'space-between',
+          }}
+        >
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <Chip size="small" label={isDemo ? 'Demo feed' : 'Live feed'} color={isDemo ? 'warning' : 'primary'} />
+            <Chip size="small" label={`${visibleRates.length} instruments`} variant="outlined" />
+            <Chip size="small" label={`Updated ${formatRelativeTime(lastUpdated)}`} variant="outlined" />
+          </Stack>
+
           <Stack
-            direction={{ xs: 'column', lg: 'row' }}
-            spacing={2}
-            sx={{
-              justifyContent: 'space-between',
-              alignItems: { xs: 'stretch', lg: 'center' },
-            }}
-          >
-            <Box>
-              <Typography variant="h4">FX rate grid</Typography>
-              <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Review current prices, spreads, and available size, with direct access to booking and export.
-              </Typography>
-            </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-              <Button variant="outlined" startIcon={<SyncRoundedIcon />} onClick={refresh}>
-                Refresh rates
-              </Button>
-              <Button variant="contained" startIcon={<DownloadRoundedIcon />} onClick={downloadExcel}>
-                Export view
-              </Button>
-            </Stack>
-          </Stack>
-
-          {error ? <Alert severity="warning">{error}</Alert> : null}
-
-          <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
-            <Chip label={isDemo ? 'Demo liquidity feed' : 'Connected to live pricing'} color={isDemo ? 'warning' : 'primary'} />
-            <Chip label={`${filteredRates.length} instruments visible`} variant="outlined" />
-            <Chip label={`Updated ${formatRelativeTime(lastUpdated)}`} variant="outlined" />
-          </Stack>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 1.25,
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))', xl: '1.2fr 0.8fr 0.8fr' },
-            }}
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={1}
+            sx={{ alignItems: { xs: 'stretch', md: 'center' }, flexShrink: 0 }}
           >
             <TextField
+              size="small"
               label="Search pair"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="EURUSD"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchRoundedIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  },
+              sx={{ minWidth: { md: 220 } }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchRoundedIcon color="action" />
+                    </InputAdornment>
+                  ),
+                },
               }}
             />
-            <TextField select label="Tenor" value={tenorFilter} onChange={(event) => setTenorFilter(event.target.value)}>
-              {tenorOptions.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField select label="Sort by" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <TextField size="small" select label="Sort by" value={sortBy} onChange={(event) => setSortBy(event.target.value)} sx={{ minWidth: { md: 180 } }}>
               <MenuItem value="pair">Currency pair</MenuItem>
-              <MenuItem value="move">Largest move</MenuItem>
-              <MenuItem value="spread">Tightest spread</MenuItem>
               <MenuItem value="updated">Latest refresh</MenuItem>
             </TextField>
-          </Box>
+            <Button size="small" variant="outlined" startIcon={<SyncRoundedIcon />} onClick={refresh}>
+              Refresh
+            </Button>
+            <Button size="small" variant="contained" startIcon={<DownloadRoundedIcon />} onClick={downloadExcel}>
+              Export
+            </Button>
+          </Stack>
         </Stack>
+
+        {error ? <Alert severity="warning" sx={{ mt: 1 }}>{error}</Alert> : null}
       </Paper>
 
       <Box
         sx={{
           display: 'grid',
-          gap: 2,
+          gap: 1.25,
           gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
         }}
       >
-        {filteredRates.map((rate) => (
-          <Card key={`${rate.ccyPair}-${rate.tenor}`}>
-            <CardContent>
-              <Stack spacing={2}>
-                <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        {visibleRates.map((rate) => (
+          <Card key={`${rate.ccyPair}-${rate.tenor}`} sx={{ borderRadius: 1 }}>
+            <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, '&:last-child': { pb: { xs: 1.5, md: 1.75 } } }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <Box>
-                    <Typography variant="h5">{rate.ccyPair}</Typography>
-                    <Typography color="text.secondary">
-                      {rate.tenor} · {formatNotional(rate.qty)} available · {formatRelativeTime(rate.updatedAt)}
+                    <Typography variant="h6" sx={{ letterSpacing: '0.08em', fontWeight: 700 }}>
+                      {rate.ccyPair}
                     </Typography>
                   </Box>
-                  <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                    <Chip label={rate.source} size="small" variant="outlined" />
-                    <Chip label={rate.status} size="small" color={rate.status === 'LIVE' ? 'success' : 'warning'} />
-                  </Stack>
                 </Stack>
 
-                <Paper sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
-                  <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Mid / spread
-                      </Typography>
-                      <Typography variant="h4">{formatRate(rate.mid)}</Typography>
-                    </Box>
-                    <Box sx={{ textAlign: 'right' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Spread
-                      </Typography>
-                      <Typography variant="h6">{rate.spreadPips} pips</Typography>
-                    </Box>
-                  </Stack>
-                </Paper>
-
-                <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' } }}>
-                  <Paper sx={{ p: 1.5, bgcolor: 'rgba(255, 107, 129, 0.08)' }}>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Bid / Sell base
-                        </Typography>
-                        <Typography variant="h4">{formatRate(rate.bid)}</Typography>
-                      </Box>
-                      {deltaIcon(rate.bidDelta)}
-                    </Stack>
-                    <Typography variant="caption" color={rate.bidDelta >= 0 ? 'success.main' : 'error.main'}>
-                      {formatSignedDelta(rate.bidDelta)}
-                    </Typography>
+                <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                  <Paper sx={getQuoteTileStyles('rgba(255, 107, 129, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
+                    <RateDisplay value={rate.bid} accentColor="error.main" />
                     <Button
                       fullWidth
                       color="error"
                       variant="outlined"
-                      sx={{ mt: 1.25 }}
+                      sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
                       onClick={() => navigate('/app/booking', { state: { quote: rate, direction: 'Sell' } })}
                     >
-                      Sell at bid
+                      Sell
                     </Button>
                   </Paper>
 
-                  <Paper sx={{ p: 1.5, bgcolor: 'rgba(43, 213, 118, 0.08)' }}>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Ask / Buy base
-                        </Typography>
-                        <Typography variant="h4">{formatRate(rate.ask)}</Typography>
-                      </Box>
-                      {deltaIcon(rate.askDelta)}
-                    </Stack>
-                    <Typography variant="caption" color={rate.askDelta >= 0 ? 'success.main' : 'error.main'}>
-                      {formatSignedDelta(rate.askDelta)}
-                    </Typography>
+                  <Paper sx={getQuoteTileStyles('rgba(43, 213, 118, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.ask)}>
+                    <RateDisplay value={rate.ask} accentColor="success.main" />
                     <Button
                       fullWidth
                       color="success"
                       variant="contained"
-                      sx={{ mt: 1.25 }}
+                      sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
                       onClick={() => navigate('/app/booking', { state: { quote: rate, direction: 'Buy' } })}
                     >
-                      Buy at ask
+                      Buy
                     </Button>
                   </Paper>
                 </Box>
 
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1}
-                  sx={{
-                    justifyContent: 'space-between',
-                    alignItems: { xs: 'stretch', sm: 'center' },
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    Open a booking ticket directly from the selected quote.
-                  </Typography>
-                  <Button variant="text" onClick={() => navigate('/app/booking', { state: { quote: rate, direction: 'Buy' } })}>
-                    Open trade ticket
-                  </Button>
-                </Stack>
               </Stack>
             </CardContent>
           </Card>
         ))}
       </Box>
 
-      {!filteredRates.length && !isLoading ? (
+      {!visibleRates.length && !(isLoading || isGridLoading) ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography variant="h6">No instruments match your filter</Typography>
           <Typography color="text.secondary" sx={{ mt: 0.75 }}>

@@ -25,6 +25,15 @@ public class FxPriceController {
         return allPrices;
     }
 
+    @GetMapping("/grid")
+    public List<FxPriceDTO> getGridPrices(
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam(defaultValue = "SP") String tenor,
+            @RequestParam(defaultValue = "pair") String sort,
+            @RequestParam(defaultValue = "6") int limit) {
+        return service.getGridPrices(search, tenor, sort, limit);
+    }
+
     @PostMapping
     public FxPrice updatePrice(@RequestBody FxPrice fxPrice) {
         return service.updatePrice(fxPrice);

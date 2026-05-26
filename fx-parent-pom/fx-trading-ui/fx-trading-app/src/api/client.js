@@ -23,6 +23,11 @@ export async function fetchFxPrices() {
   return response.data;
 }
 
+export async function fetchFxGrid(params = {}) {
+  const response = await pricingApi.get('/fxprices/grid', { params });
+  return response.data;
+}
+
 export async function fetchLookup(path, fallback) {
   try {
     const response = await pricingApi.get(path);

@@ -2,6 +2,41 @@ export function formatRate(value) {
   return Number(value || 0).toFixed(Number(value || 0) > 20 ? 3 : 5);
 }
 
+export function getRateDisplayParts(value) {
+  const formatted = formatRate(value);
+  const [integerPart, fractionalPart = ''] = formatted.split('.');
+
+  if (!fractionalPart) {
+    return {
+      major: formatted,
+      significant: '',
+      pipette: '',
+    };
+  }
+
+  if (fractionalPart.length >= 5) {
+    return {
+      major: `${integerPart}.${fractionalPart.slice(0, 2)}`,
+      significant: fractionalPart.slice(2, 4),
+      pipette: fractionalPart.slice(4),
+    };
+  }
+
+  if (fractionalPart.length >= 3) {
+    return {
+      major: `${integerPart}.${fractionalPart.slice(0, 1)}`,
+      significant: fractionalPart.slice(1, 2),
+      pipette: fractionalPart.slice(2),
+    };
+  }
+
+  return {
+    major: `${integerPart}.`,
+    significant: fractionalPart,
+    pipette: '',
+  };
+}
+
 export function formatNotional(value) {
   return new Intl.NumberFormat('en-US', {
     notation: 'compact',
