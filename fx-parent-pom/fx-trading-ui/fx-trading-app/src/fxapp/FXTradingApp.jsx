@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import CandlestickChartRoundedIcon from '@mui/icons-material/CandlestickChartRounded';
+import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded';
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import AccountBalanceWalletRoundedIcon from '@mui/icons-material/AccountBalanceWalletRounded';
@@ -40,6 +41,7 @@ const drawerWidth = 292;
 const navigationItems = [
   { label: 'Dashboard', path: '/app', icon: <DashboardRoundedIcon /> },
   { label: 'Rates', path: '/app/rates', icon: <CandlestickChartRoundedIcon /> },
+  { label: 'Limit orders', path: '/app/limit-orders', icon: <PendingActionsRoundedIcon /> },
   { label: 'Booking', path: '/app/booking', icon: <AddCardRoundedIcon /> },
   { label: 'Blotter', path: '/app/blotter', icon: <ReceiptLongRoundedIcon /> },
   { label: 'Analysis', path: '/app/analysis', icon: <InsightsRoundedIcon /> },
@@ -54,6 +56,10 @@ const pageTitles = {
   '/app/rates': {
     title: 'Rates',
     subtitle: 'Review current prices, spreads, and available size.',
+  },
+  '/app/limit-orders': {
+    title: 'Limit orders',
+    subtitle: 'Review active and historical spot limit orders across the desk.',
   },
   '/app/booking': {
     title: 'Booking',

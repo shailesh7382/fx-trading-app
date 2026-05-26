@@ -1,5 +1,6 @@
 package com.example.service;
 
+import com.example.LimitOrderAmendRequest;
 import com.example.LimitOrderRequest;
 import com.example.model.FxPrice;
 import com.example.model.LimitOrder;
@@ -30,9 +31,11 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,7 +57,8 @@ class LimitOrderServiceTest {
     void setUp() {
         Clock fixedClock = Clock.fixed(Instant.parse("2026-05-26T08:00:00Z"), ZoneOffset.UTC);
         limitOrderService = new LimitOrderService(limitOrderRepository, fxPriceRepository, tradeService, fixedClock);
-        when(limitOrderRepository.findByStatusAndTimeInForceAndGoodTillDateBefore(any(), any(), any())).thenReturn(Collections.emptyList());
+        when(limitOrderRepository.findByStatusAndTimeInForceAndGoodTillDateBefore(any(LimitOrderStatus.class), any(TimeInForce.class), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
     }
 
     @Test
@@ -150,7 +154,7 @@ class LimitOrderServiceTest {
         when(fxPriceRepository.findByCcyPairAndTenor("EURUSD", Tenor.SP)).thenReturn(List.of(executablePrice));
         when(limitOrderRepository.findByStatusAndCcyPairAndTenorOrderBySubmittedAtAsc(LimitOrderStatus.ACTIVE, "EURUSD", "SP"))
                 .thenAnswer(invocation -> savedOrderRef.get() == null ? Collections.emptyList() : List.of(savedOrderRef.get()));
-        when(limitOrderRepository.findById(any())).thenAnswer(invocation -> Optional.ofNullable(savedOrderRef.get()));
+        when(limitOrderRepository.findById(anyString())).thenAnswer(invocation -> Optional.ofNullable(savedOrderRef.get()));
 
         LimitOrder submittedOrder = limitOrderService.submitLimitOrder(request);
 
@@ -175,7 +179,71 @@ class LimitOrderServiceTest {
         assertThat(currentOrders).isEmpty();
         assertThat(staleOrder.getStatus()).isEqualTo(LimitOrderStatus.EXPIRED);
         verify(limitOrderRepository).saveAll(List.of(staleOrder));
-        verify(tradeService, never()).bookExecutedLimitOrder(any(), any(Double.class));
+        verify(tradeService, never()).bookExecutedLimitOrder(any(LimitOrder.class), any(Double.class));
+    }
+
+    @Test
+    void cancelsActiveLimitOrder() {
+        LimitOrder activeOrder = new LimitOrder();
+        activeOrder.setId("LO-CANCEL");
+        activeOrder.setStatus(LimitOrderStatus.ACTIVE);
+
+        when(limitOrderRepository.findById("LO-CANCEL")).thenReturn(Optional.of(activeOrder));
+        when(limitOrderRepository.save(activeOrder)).thenReturn(activeOrder);
+
+        LimitOrder cancelledOrder = limitOrderService.cancelLimitOrder("LO-CANCEL");
+
+        assertThat(cancelledOrder.getStatus()).isEqualTo(LimitOrderStatus.CANCELLED);
+        verify(limitOrderRepository).save(activeOrder);
+    }
+
+    @Test
+    void amendsActiveOrderAndExecutesIfNewPriceIsMarketable() {
+        LimitOrder activeOrder = new LimitOrder();
+        activeOrder.setId("LO-AMEND");
+        activeOrder.setStatus(LimitOrderStatus.ACTIVE);
+        activeOrder.setCcyPair("EURUSD");
+        activeOrder.setTenor("SP");
+        activeOrder.setDirection("Buy");
+        activeOrder.setQty(1_000_000);
+        activeOrder.setLimitPrice(1.08300);
+        activeOrder.setTimeInForce(TimeInForce.GTC);
+
+        LimitOrderAmendRequest request = new LimitOrderAmendRequest();
+        request.setQty(1_500_000);
+        request.setLimitPrice(1.08320);
+        request.setTimeInForce("GTD");
+        request.setGoodTillDate(LocalDate.parse("2026-05-30"));
+        request.setComments("Amended from rates panel");
+
+        FxPrice executablePrice = new FxPrice(
+                "EURUSD",
+                1.08310,
+                1.08318,
+                0,
+                0,
+                Tenor.SP,
+                LocalDateTime.parse("2026-05-26T08:00:00"),
+                Source.AUTO,
+                2_000_000,
+                Status.ACTIVE
+        );
+
+        when(limitOrderRepository.findById("LO-AMEND")).thenReturn(Optional.of(activeOrder), Optional.of(activeOrder));
+        when(limitOrderRepository.save(any(LimitOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fxPriceRepository.findByCcyPairAndTenor("EURUSD", Tenor.SP)).thenReturn(List.of(executablePrice));
+        when(limitOrderRepository.findByStatusAndCcyPairAndTenorOrderBySubmittedAtAsc(LimitOrderStatus.ACTIVE, "EURUSD", "SP"))
+                .thenReturn(List.of(activeOrder));
+
+        LimitOrder amendedOrder = limitOrderService.amendLimitOrder("LO-AMEND", request);
+
+        assertThat(amendedOrder.getQty()).isEqualTo(1_500_000);
+        assertThat(amendedOrder.getTimeInForce()).isEqualTo(TimeInForce.GTD);
+        assertThat(amendedOrder.getGoodTillDate()).isEqualTo(LocalDate.parse("2026-05-26"));
+        assertThat(amendedOrder.getComments()).isEqualTo("Amended from rates panel");
+        assertThat(amendedOrder.getStatus()).isEqualTo(LimitOrderStatus.EXECUTED);
+        verify(limitOrderRepository, times(2)).save(activeOrder);
+        verify(tradeService).bookExecutedLimitOrder(activeOrder, 1.08318);
     }
 }
 

@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { extractApiMessage, fetchFxGrid, submitLimitOrder } from '../api/client';
+import { amendLimitOrder, cancelLimitOrder, extractApiMessage, fetchFxGrid, submitLimitOrder } from '../api/client';
 import UserContext from './UserContext';
 import { calculateSettlementDate, formatDateTime, formatNotional, formatRate, getCurrencyCodes, getRateDisplayParts } from '../utils/formatters';
 
@@ -98,9 +98,7 @@ function getInitialLimitPrice(direction, rate) {
 }
 
 function getDefaultGoodTillDate() {
-  const nextWeek = new Date();
-  nextWeek.setDate(nextWeek.getDate() + 7);
-  return nextWeek.toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
 }
 
 function buildInitialLimitOrderForm(rate, selection) {
@@ -111,6 +109,16 @@ function buildInitialLimitOrderForm(rate, selection) {
     limitPrice: getInitialLimitPrice('Buy', rate),
     timeInForce: 'GTC',
     goodTillDate: getDefaultGoodTillDate(),
+  };
+}
+
+function buildAmendOrderForm(order) {
+  return {
+    qty: String(Math.round(Number(order?.qty || 0))),
+    limitPrice: String(order?.limitPrice || ''),
+    timeInForce: order?.timeInForce || 'GTC',
+    goodTillDate: order?.goodTillDate || getDefaultGoodTillDate(),
+    comments: order?.comments || '',
   };
 }
 
@@ -166,6 +174,10 @@ function FXRateGrid() {
   const [limitOrderForms, setLimitOrderForms] = useState([]);
   const [submittingLimitIndex, setSubmittingLimitIndex] = useState(null);
   const [limitOrderFeedback, setLimitOrderFeedback] = useState(null);
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [amendOrderForm, setAmendOrderForm] = useState(null);
+  const [processingOrderId, setProcessingOrderId] = useState(null);
+  const [processingOrderAction, setProcessingOrderAction] = useState('');
 
   const displayRates = useMemo(() => {
     const grouped = new Map();
@@ -474,7 +486,7 @@ function FXRateGrid() {
             ccyPair: selection.ccyPair,
             tenor: selection.tenor,
             timeInForce: value,
-            goodTillDate: form.goodTillDate || getDefaultGoodTillDate(),
+            goodTillDate: getDefaultGoodTillDate(),
           };
         }
 
@@ -542,6 +554,96 @@ function FXRateGrid() {
       });
     } finally {
       setSubmittingLimitIndex(null);
+    }
+  };
+
+  const startAmendOrder = (order) => {
+    setEditingOrderId(order.id);
+    setAmendOrderForm(buildAmendOrderForm(order));
+  };
+
+  const handleAmendOrderFieldChange = (field, value) => {
+    setAmendOrderForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const resetAmendOrder = () => {
+    setEditingOrderId(null);
+    setAmendOrderForm(null);
+  };
+
+  const handleSaveAmendOrder = async (order) => {
+    const parsedQty = Number.parseInt(amendOrderForm?.qty || '', 10);
+    const parsedLimitPrice = Number(amendOrderForm?.limitPrice || 0);
+
+    if (!parsedQty) {
+      setLimitOrderFeedback({ severity: 'error', message: 'Enter a valid amended quantity before saving.' });
+      return;
+    }
+
+    if (!parsedLimitPrice) {
+      setLimitOrderFeedback({ severity: 'error', message: 'Enter a valid amended limit price before saving.' });
+      return;
+    }
+
+    setProcessingOrderId(order.id);
+    setProcessingOrderAction('amend');
+
+    try {
+      const updatedOrder = await amendLimitOrder(order.id, {
+        qty: parsedQty,
+        limitPrice: parsedLimitPrice,
+        timeInForce: amendOrderForm.timeInForce,
+        goodTillDate: amendOrderForm.timeInForce === 'GTD' ? amendOrderForm.goodTillDate : null,
+        comments: amendOrderForm.comments,
+      });
+
+      setLimitOrderFeedback({
+        severity: 'success',
+        message:
+          updatedOrder.status === 'EXECUTED'
+            ? `Limit order ${updatedOrder.id} was amended and immediately executed.`
+            : `Limit order ${updatedOrder.id} amended successfully.`,
+      });
+      resetAmendOrder();
+      await refresh?.();
+    } catch (amendError) {
+      setLimitOrderFeedback({
+        severity: 'error',
+        message: extractApiMessage(amendError, 'Unable to amend the limit order right now.'),
+      });
+    } finally {
+      setProcessingOrderId(null);
+      setProcessingOrderAction('');
+    }
+  };
+
+  const handleCancelOrder = async (order) => {
+    setProcessingOrderId(order.id);
+    setProcessingOrderAction('cancel');
+
+    try {
+      const cancelledOrder = await cancelLimitOrder(order.id);
+      setLimitOrderFeedback({
+        severity: 'success',
+        message: `Limit order ${cancelledOrder.id} cancelled successfully.`,
+      });
+
+      if (editingOrderId === order.id) {
+        resetAmendOrder();
+      }
+
+      await refresh?.();
+    } catch (cancelError) {
+      setLimitOrderFeedback({
+        severity: 'error',
+        message: extractApiMessage(cancelError, 'Unable to cancel the limit order right now.'),
+      });
+    } finally {
+      setProcessingOrderId(null);
+      setProcessingOrderAction('');
     }
   };
 
@@ -652,7 +754,7 @@ function FXRateGrid() {
                           fullWidth
                           color="error"
                           variant="outlined"
-                          sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
+                              sx={{ mt: 1, minHeight: 34, fontWeight: 700, fontSize: '0.8rem', py: 0.45 }}
                           onClick={() =>
                             navigate('/app/booking', {
                               state: buildBookingState(rate, 'Sell', selectedDealCurrency, valueDate, bookingQuantity),
@@ -669,7 +771,7 @@ function FXRateGrid() {
                           fullWidth
                           color="success"
                           variant="contained"
-                          sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
+                              sx={{ mt: 1, minHeight: 34, fontWeight: 700, fontSize: '0.8rem', py: 0.45 }}
                           onClick={() =>
                             navigate('/app/booking', {
                               state: buildBookingState(rate, 'Buy', selectedDealCurrency, valueDate, bookingQuantity),
@@ -697,11 +799,11 @@ function FXRateGrid() {
                       >
                         <Box
                           sx={{
-                            display: 'flex',
+                              display: 'flex',
                             alignItems: 'center',
                             gap: 0.25,
-                            px: 1,
-                            py: 0.5,
+                              px: 0.75,
+                              py: 0.35,
                             borderRadius: 0.6,
                             border: '1px solid rgba(255,255,255,0.08)',
                             bgcolor: 'rgba(255,255,255,0.02)',
@@ -725,10 +827,10 @@ function FXRateGrid() {
                               pattern: '[0-9,]*',
                             }}
                             sx={{
-                              flex: '0 1 140px',
-                              minWidth: 96,
+                              flex: '0 1 112px',
+                              minWidth: 72,
                               fontWeight: 700,
-                              fontSize: '0.95rem',
+                              fontSize: '0.82rem',
                               fontVariantNumeric: 'tabular-nums',
                               '& input': {
                                 p: 0,
@@ -736,7 +838,7 @@ function FXRateGrid() {
                               },
                             }}
                           />
-                          <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em', fontSize: '0.76rem' }}>
                             {selectedDealCurrency}
                           </Typography>
                           <Tooltip title={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}>
@@ -754,7 +856,7 @@ function FXRateGrid() {
                           </Tooltip>
                         </Box>
 
-                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto' }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto', fontSize: '0.76rem' }}>
                           {valueDate}
                         </Typography>
                       </Stack>
@@ -770,79 +872,94 @@ function FXRateGrid() {
                       }}
                     >
                       <Stack spacing={1.1}>
-                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', rowGap: 0.75 }}>
-                          <Box>
-                            <Typography variant="subtitle2">Spot limit order</Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                              Submit GTC or GTD instructions directly from the rate card. Orders execute server-side once the spot limit is hit.
-                            </Typography>
-                          </Box>
-                          <Chip label={isSpotCard ? 'Spot enabled' : 'Spot only'} size="small" color={isSpotCard ? 'primary' : 'default'} variant="outlined" />
-                        </Stack>
 
                         {isSpotCard ? (
                           <>
-                            <Typography variant="body2" color="text.secondary">
-                              Uses {formatDealQuantity(selectedDealQuantity) || '0'} {selectedDealCurrency} · settles {valueDate}
-                            </Typography>
+
 
                             <Box
                               sx={{
                                 display: 'grid',
                                 gap: 1,
-                                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
+                                gridTemplateColumns: '84px minmax(0, 1fr) 72px',
+                                alignItems: 'start',
                               }}
                             >
                               <TextField
                                 select
                                 size="small"
-                                label="Side"
                                 value={limitOrderForm.direction}
                                 onChange={(event) => handleLimitOrderFieldChange(index, 'direction', event.target.value, rate, selection)}
+                                slotProps={{
+                                  select: { displayEmpty: true },
+                                  htmlInput: { 'aria-label': `${selection.ccyPair} limit order side` },
+                                }}
+                                sx={{
+                                  '& .MuiInputBase-root': {
+                                    minHeight: 34,
+                                  },
+                                  '& .MuiSelect-select': {
+                                    fontSize: '0.78rem',
+                                    py: 0.75,
+                                  },
+                                  '& .MuiOutlinedInput-root': {
+                                    borderRadius: 0,
+                                  },
+                                }}
                               >
                                 <MenuItem value="Buy">Buy</MenuItem>
                                 <MenuItem value="Sell">Sell</MenuItem>
                               </TextField>
                               <TextField
                                 size="small"
-                                label="Limit price"
                                 type="number"
                                 value={limitOrderForm.limitPrice}
                                 onChange={(event) => handleLimitOrderFieldChange(index, 'limitPrice', event.target.value, rate, selection)}
+                                placeholder="Price"
+                                slotProps={{ htmlInput: { 'aria-label': `${selection.ccyPair} limit price` } }}
+                                sx={{
+                                  '& .MuiInputBase-root': {
+                                    minHeight: 34,
+                                  },
+                                  '& .MuiInputBase-input': {
+                                    fontSize: '0.8rem',
+                                    py: 0.85,
+                                  },
+                                  '& .MuiOutlinedInput-root': {
+                                    borderRadius: 0,
+                                  },
+                                }}
                               />
                               <TextField
                                 select
                                 size="small"
-                                label="TIF"
                                 value={limitOrderForm.timeInForce}
                                 onChange={(event) => handleLimitOrderFieldChange(index, 'timeInForce', event.target.value, rate, selection)}
+                                slotProps={{
+                                  select: { displayEmpty: true },
+                                  htmlInput: { 'aria-label': `${selection.ccyPair} limit order tif` },
+                                }}
+                                sx={{
+                                  '& .MuiInputBase-root': {
+                                    minHeight: 34,
+                                  },
+                                  '& .MuiSelect-select': {
+                                    fontSize: '0.78rem',
+                                    py: 0.75,
+                                  },
+                                  '& .MuiOutlinedInput-root': {
+                                    borderRadius: 0,
+                                  },
+                                }}
                               >
                                 <MenuItem value="GTC">GTC</MenuItem>
                                 <MenuItem value="GTD">GTD</MenuItem>
                               </TextField>
-                              {limitOrderForm.timeInForce === 'GTD' ? (
-                                <TextField
-                                  size="small"
-                                  label="Good till"
-                                  type="date"
-                                  value={limitOrderForm.goodTillDate}
-                                  onChange={(event) => handleLimitOrderFieldChange(index, 'goodTillDate', event.target.value, rate, selection)}
-                                  slotProps={{ inputLabel: { shrink: true } }}
-                                />
-                              ) : (
-                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.1 }}>
-                                    Good till
-                                  </Typography>
-                                  <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.35 }}>
-                                    Cancelled
-                                  </Typography>
-                                </Paper>
-                              )}
                             </Box>
 
                             <Button
                               variant="contained"
+                              size="small"
                               onClick={() =>
                                 handleSubmitLimitOrder({
                                   cardIndex: index,
@@ -854,6 +971,7 @@ function FXRateGrid() {
                                 })
                               }
                               disabled={submittingLimitIndex === index}
+                              sx={{ alignSelf: 'flex-start', minHeight: 34, fontSize: '0.8rem', px: 1.35 }}
                             >
                               {submittingLimitIndex === index ? 'Submitting…' : 'Submit limit order'}
                             </Button>
@@ -875,9 +993,6 @@ function FXRateGrid() {
         <Stack spacing={1.25}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6">Current limit orders</Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-              Active spot GTD and GTC orders stored on the pricing server and evaluated against the live market feed.
-            </Typography>
 
             <Stack direction="row" gap={1} sx={{ mt: 1.5, flexWrap: 'wrap' }}>
               <Chip label={`${activeLimitOrders.length} active`} color={activeLimitOrders.length ? 'primary' : 'default'} size="small" />
@@ -903,41 +1018,159 @@ function FXRateGrid() {
                     <Stack spacing={1}>
                       <Stack direction="row" spacing={0.75} sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', rowGap: 0.75 }}>
                         <Box>
-                          <Typography variant="subtitle1">
+                          <Typography variant="subtitle1" sx={{ fontSize: '0.95rem' }}>
                             {order.direction} {order.ccyPair}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.78rem' }}>
                             {formatNotional(order.qty)} · {order.dealtCurrency} · {order.tenor}
                           </Typography>
                         </Box>
                         <Stack direction="row" gap={0.5} sx={{ flexWrap: 'wrap' }}>
-                          <Chip label={order.timeInForce} size="small" variant="outlined" />
-                          <Chip label={atLimit ? 'At/through limit' : 'Working'} size="small" color={atLimit ? 'success' : 'default'} />
+                          <Chip
+                            label={order.timeInForce}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              height: 22,
+                              '& .MuiChip-label': {
+                                px: 0.75,
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                              },
+                            }}
+                          />
+                          <Chip
+                            label={atLimit ? 'Trigger hit' : 'Working'}
+                            size="small"
+                            color={atLimit ? 'success' : 'default'}
+                            sx={{
+                              height: 22,
+                              '& .MuiChip-label': {
+                                px: 0.75,
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                              },
+                            }}
+                          />
                         </Stack>
                       </Stack>
 
                       <Stack spacing={0.75}>
                         <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                          <Typography color="text.secondary">Limit</Typography>
-                          <Typography>{formatRate(order.limitPrice)}</Typography>
+                          <Typography color="text.secondary" sx={{ fontSize: '0.78rem' }}>Trigger</Typography>
+                          <Typography sx={{ fontSize: '0.8rem' }}>{formatRate(order.limitPrice)}</Typography>
                         </Stack>
                         <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                          <Typography color="text.secondary">Live spot</Typography>
-                          <Typography>{liveMarketPrice == null ? 'N/A' : formatRate(liveMarketPrice)}</Typography>
+                          <Typography color="text.secondary" sx={{ fontSize: '0.78rem' }}>Live spot</Typography>
+                          <Typography sx={{ fontSize: '0.8rem' }}>{liveMarketPrice == null ? 'N/A' : formatRate(liveMarketPrice)}</Typography>
                         </Stack>
                         <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                          <Typography color="text.secondary">Good till</Typography>
-                          <Typography>{order.timeInForce === 'GTD' ? order.goodTillDate : 'Cancelled'}</Typography>
+                          <Typography color="text.secondary" sx={{ fontSize: '0.78rem' }}>Good till</Typography>
+                          <Typography sx={{ fontSize: '0.8rem' }}>{order.timeInForce === 'GTD' ? 'Today only' : 'Until cancelled'}</Typography>
                         </Stack>
                         <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                          <Typography color="text.secondary">Submitted</Typography>
-                          <Typography>{formatDateTime(order.submittedAt)}</Typography>
+                          <Typography color="text.secondary" sx={{ fontSize: '0.78rem' }}>Submitted</Typography>
+                          <Typography sx={{ fontSize: '0.8rem' }}>{formatDateTime(order.submittedAt)}</Typography>
                         </Stack>
                       </Stack>
 
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                         {order.id} · Trader {order.trader || 'system'}
                       </Typography>
+
+                      {editingOrderId === order.id && amendOrderForm ? (
+                        <Paper variant="outlined" sx={{ p: 1.1, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                          <Stack spacing={1}>
+                            <Typography variant="subtitle2">Amend active order</Typography>
+                            <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' } }}>
+                              <TextField
+                                size="small"
+                                label="Quantity"
+                                type="number"
+                                value={amendOrderForm.qty}
+                                onChange={(event) => handleAmendOrderFieldChange('qty', event.target.value)}
+                              />
+                              <TextField
+                                size="small"
+                                label="Limit price"
+                                type="number"
+                                value={amendOrderForm.limitPrice}
+                                onChange={(event) => handleAmendOrderFieldChange('limitPrice', event.target.value)}
+                              />
+                              <TextField
+                                select
+                                size="small"
+                                label="TIF"
+                                value={amendOrderForm.timeInForce}
+                                onChange={(event) => handleAmendOrderFieldChange('timeInForce', event.target.value)}
+                              >
+                                <MenuItem value="GTC">GTC</MenuItem>
+                                <MenuItem value="GTD">GTD</MenuItem>
+                              </TextField>
+                              {amendOrderForm.timeInForce === 'GTD' ? (
+                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.1 }}>
+                                    Good till
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.35 }}>
+                                    Today only
+                                  </Typography>
+                                </Paper>
+                              ) : (
+                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.1 }}>
+                                    Good till
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.35 }}>
+                                    Until cancelled
+                                  </Typography>
+                                </Paper>
+                              )}
+                            </Box>
+                            <TextField
+                              size="small"
+                              label="Comments"
+                              value={amendOrderForm.comments}
+                              onChange={(event) => handleAmendOrderFieldChange('comments', event.target.value)}
+                              multiline
+                              rows={2}
+                            />
+                            <Stack direction="row" spacing={1}>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={() => handleSaveAmendOrder(order)}
+                                disabled={processingOrderId === order.id}
+                              >
+                                {processingOrderId === order.id && processingOrderAction === 'amend' ? 'Saving…' : 'Save amend'}
+                              </Button>
+                              <Button size="small" variant="text" onClick={resetAmendOrder} disabled={processingOrderId === order.id}>
+                                Close
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      ) : null}
+
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => startAmendOrder(order)}
+                          disabled={processingOrderId === order.id}
+                        >
+                          Amend
+                        </Button>
+                        <Button
+                          size="small"
+                          color="warning"
+                          variant="text"
+                          onClick={() => handleCancelOrder(order)}
+                          disabled={processingOrderId === order.id}
+                        >
+                          {processingOrderId === order.id && processingOrderAction === 'cancel' ? 'Cancelling…' : 'Cancel order'}
+                        </Button>
+                      </Stack>
                     </Stack>
                   </Paper>
                 );

@@ -5,6 +5,7 @@ import Login from './fxapp/Login';
 import FXTradingApp from './fxapp/FXTradingApp';
 import DashboardHome from './fxapp/DashboardHome';
 import FXRateGrid from './fxapp/FXRateGrid';
+import FXLimitOrders from './fxapp/FXLimitOrders';
 import FXTradeBooking from './fxapp/FXTradeBooking';
 import FXTradeBlotter from './fxapp/FXTradeBlotter';
 import FXMarketAnalysis from './fxapp/FXMarketAnalysis';
@@ -31,6 +32,7 @@ function AppRoutes() {
         >
           <Route index element={<DashboardHome />} />
           <Route path="rates" element={<FXRateGrid />} />
+          <Route path="limit-orders" element={<FXLimitOrders />} />
           <Route path="booking" element={<FXTradeBooking />} />
           <Route path="blotter" element={<FXTradeBlotter />} />
           <Route path="analysis" element={<FXMarketAnalysis />} />

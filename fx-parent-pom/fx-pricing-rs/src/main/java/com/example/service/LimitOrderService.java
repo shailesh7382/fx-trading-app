@@ -1,5 +1,6 @@
 package com.example.service;
 
+import com.example.LimitOrderAmendRequest;
 import com.example.LimitOrderRequest;
 import com.example.Tenor;
 import com.example.model.FxPrice;
@@ -22,6 +23,7 @@ import java.util.Locale;
 import java.util.OptionalDouble;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
 public class LimitOrderService {
@@ -44,41 +46,13 @@ public class LimitOrderService {
     public LimitOrder submitLimitOrder(LimitOrderRequest request) {
         expireStaleOrders();
 
-        String tenor = normalizeTenor(request.getTenor());
-        if (!"SP".equals(tenor)) {
-            throw new ResponseStatusException(BAD_REQUEST, "Limit orders are only supported for spot instruments.");
-        }
-
-        if (!hasText(request.getCcyPair())) {
-            throw new ResponseStatusException(BAD_REQUEST, "Currency pair is required for a limit order.");
-        }
-
-        if (!hasText(request.getDealtCurrency())) {
-            throw new ResponseStatusException(BAD_REQUEST, "Dealt currency is required for a limit order.");
-        }
-
-        if (request.getQty() <= 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "Limit order quantity must be greater than zero.");
-        }
-
-        if (request.getLimitPrice() <= 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "Limit price must be greater than zero.");
-        }
-
+        String tenor = validateSpotTenor(request.getTenor());
+        validateRequiredSpotFields(request.getCcyPair(), request.getDealtCurrency());
+        validateOrderNumbers(request.getQty(), request.getLimitPrice());
         String direction = normalizeDirection(request.getDirection());
-        TimeInForce timeInForce = parseTimeInForce(request.getTimeInForce());
         LocalDate today = LocalDate.now(clock);
-        LocalDate goodTillDate = null;
-
-        if (timeInForce == TimeInForce.GTD) {
-            goodTillDate = request.getGoodTillDate();
-            if (goodTillDate == null) {
-                throw new ResponseStatusException(BAD_REQUEST, "Good-till date is required for GTD limit orders.");
-            }
-            if (goodTillDate.isBefore(today)) {
-                throw new ResponseStatusException(BAD_REQUEST, "Good-till date cannot be in the past.");
-            }
-        }
+        TimeInForce timeInForce = parseTimeInForce(request.getTimeInForce());
+        LocalDate goodTillDate = validateGoodTillDate(timeInForce, request.getGoodTillDate(), today);
 
         LimitOrder order = new LimitOrder();
         order.setId(nextOrderId());
@@ -119,6 +93,58 @@ public class LimitOrderService {
     public List<LimitOrder> getAllOrders() {
         expireStaleOrders();
         return limitOrderRepository.findAllByOrderBySubmittedAtDesc();
+    }
+
+    @Transactional
+    public List<LimitOrder> getOrders(String view, String status) {
+        expireStaleOrders();
+
+        if (hasText(status) && !"ALL".equalsIgnoreCase(status)) {
+            return limitOrderRepository.findByStatusOrderBySubmittedAtDesc(parseStatus(status));
+        }
+
+        if ("ALL".equalsIgnoreCase(defaultText(view, "ACTIVE"))) {
+            return limitOrderRepository.findAllByOrderBySubmittedAtDesc();
+        }
+
+        return limitOrderRepository.findByStatusOrderBySubmittedAtDesc(LimitOrderStatus.ACTIVE);
+    }
+
+    @Transactional
+    public LimitOrder amendLimitOrder(String orderId, LimitOrderAmendRequest request) {
+        expireStaleOrders();
+
+        LimitOrder activeOrder = getActiveOrder(orderId);
+        validateOrderNumbers(request.getQty(), request.getLimitPrice());
+
+        TimeInForce timeInForce = parseTimeInForce(request.getTimeInForce());
+        LocalDate goodTillDate = validateGoodTillDate(timeInForce, request.getGoodTillDate(), LocalDate.now(clock));
+
+        activeOrder.setQty(request.getQty());
+        activeOrder.setLimitPrice(request.getLimitPrice());
+        activeOrder.setTimeInForce(timeInForce);
+        activeOrder.setGoodTillDate(goodTillDate);
+
+        if (request.getComments() != null) {
+            activeOrder.setComments(request.getComments().trim());
+        }
+
+        LimitOrder savedOrder = limitOrderRepository.save(activeOrder);
+        evaluateTriggeredOrders(
+                savedOrder.getCcyPair(),
+                savedOrder.getTenor(),
+                fxPriceRepository.findByCcyPairAndTenor(savedOrder.getCcyPair(), Tenor.SP)
+        );
+        return limitOrderRepository.findById(savedOrder.getId()).orElse(savedOrder);
+    }
+
+    @Transactional
+    public LimitOrder cancelLimitOrder(String orderId) {
+        expireStaleOrders();
+
+        LimitOrder activeOrder = getActiveOrder(orderId);
+        activeOrder.setStatus(LimitOrderStatus.CANCELLED);
+        return limitOrderRepository.save(activeOrder);
     }
 
     @Transactional
@@ -167,6 +193,17 @@ public class LimitOrderService {
         return staleOrders.size();
     }
 
+    private LimitOrder getActiveOrder(String orderId) {
+        LimitOrder order = limitOrderRepository.findById(orderId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Limit order " + orderId + " was not found."));
+
+        if (order.getStatus() != LimitOrderStatus.ACTIVE) {
+            throw new ResponseStatusException(BAD_REQUEST, "Only active limit orders can be amended or cancelled.");
+        }
+
+        return order;
+    }
+
     private OptionalDouble findExecutablePrice(List<FxPrice> prices, LimitOrder order) {
         return prices.stream()
                 .filter(price -> price.getQty() >= order.getQty())
@@ -194,6 +231,52 @@ public class LimitOrderService {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(BAD_REQUEST, "Unsupported time-in-force. Use GTC or GTD.");
         }
+    }
+
+    private LimitOrderStatus parseStatus(String rawStatus) {
+        try {
+            return LimitOrderStatus.valueOf(rawStatus.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(BAD_REQUEST, "Unsupported limit order status filter.");
+        }
+    }
+
+    private String validateSpotTenor(String tenor) {
+        String normalizedTenor = normalizeTenor(tenor);
+
+        if (!"SP".equals(normalizedTenor)) {
+            throw new ResponseStatusException(BAD_REQUEST, "Limit orders are only supported for spot instruments.");
+        }
+
+        return normalizedTenor;
+    }
+
+    private void validateRequiredSpotFields(String ccyPair, String dealtCurrency) {
+        if (!hasText(ccyPair)) {
+            throw new ResponseStatusException(BAD_REQUEST, "Currency pair is required for a limit order.");
+        }
+
+        if (!hasText(dealtCurrency)) {
+            throw new ResponseStatusException(BAD_REQUEST, "Dealt currency is required for a limit order.");
+        }
+    }
+
+    private void validateOrderNumbers(double qty, double limitPrice) {
+        if (qty <= 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "Limit order quantity must be greater than zero.");
+        }
+
+        if (limitPrice <= 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "Limit price must be greater than zero.");
+        }
+    }
+
+    private LocalDate validateGoodTillDate(TimeInForce timeInForce, LocalDate goodTillDate, LocalDate today) {
+        if (timeInForce != TimeInForce.GTD) {
+            return null;
+        }
+
+        return today;
     }
 
     private String normalizeDirection(String direction) {

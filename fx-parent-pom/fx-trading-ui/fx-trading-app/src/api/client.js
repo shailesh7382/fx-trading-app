@@ -57,6 +57,16 @@ export async function submitLimitOrder(payload) {
   return response.data;
 }
 
+export async function amendLimitOrder(orderId, payload) {
+  const response = await pricingApi.put(`/limit-orders/${orderId}`, payload);
+  return response.data;
+}
+
+export async function cancelLimitOrder(orderId) {
+  const response = await pricingApi.post(`/limit-orders/${orderId}/cancel`);
+  return response.data;
+}
+
 export function extractApiMessage(error, fallbackMessage) {
   return (
     error?.response?.data?.message ||
