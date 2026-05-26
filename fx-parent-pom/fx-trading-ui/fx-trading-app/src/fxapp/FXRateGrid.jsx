@@ -5,23 +5,22 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
-  InputAdornment,
+  IconButton,
+  InputBase,
   MenuItem,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
-import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
+import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { fetchFxGrid } from '../api/client';
-import { downloadCsv } from '../utils/export';
-import { formatRelativeTime, getRateDisplayParts } from '../utils/formatters';
+import { calculateSettlementDate, getCurrencyCodes, getRateDisplayParts } from '../utils/formatters';
 
 const flashDurationMs = 900;
+const tenorOrder = ['SP', '1W', '1M', '6M', '1Y', '3M'];
 
 function getRateSignal(currentValue, previousValue) {
   if (previousValue == null || currentValue === previousValue) {
@@ -55,6 +54,37 @@ function getQuoteTileStyles(baseBackground, signal) {
     transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
     ...signalStyles,
   };
+}
+
+function getTenorSortOrder(tenor) {
+  const index = tenorOrder.indexOf(tenor);
+  return index === -1 ? tenorOrder.length : index;
+}
+
+function sanitizeQuantityInput(value = '') {
+  return String(value).replace(/[^\d]/g, '');
+}
+
+function formatDealQuantity(value) {
+  const digits = sanitizeQuantityInput(value);
+
+  if (!digits) {
+    return '';
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+  }).format(Number(digits));
+}
+
+function getInitialDealQuantity(rate) {
+  const roundedQuantity = Math.round(Number(rate?.qty || 0));
+
+  if (!roundedQuantity) {
+    return '1000000';
+  }
+
+  return String(roundedQuantity);
 }
 
 function RateDisplay({ value, accentColor }) {
@@ -93,26 +123,71 @@ function RateDisplay({ value, accentColor }) {
 
 function FXRateGrid() {
   const navigate = useNavigate();
-  const { rates, isDemo, error, isLoading, lastUpdated, refresh } = useOutletContext();
-  const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState('pair');
+  const { rates, error, isLoading, lastUpdated } = useOutletContext();
   const maxVisibleRates = 6;
   const [serverRates, setServerRates] = useState([]);
   const [gridRequestFailed, setGridRequestFailed] = useState(false);
   const [isGridLoading, setIsGridLoading] = useState(false);
   const previousRatesRef = useRef(new Map());
+  const selectionSeedRef = useRef({ search: '', sortBy: 'pair' });
   const [flashSignals, setFlashSignals] = useState({});
+  const [cardSelections, setCardSelections] = useState([]);
+  const [dealCurrencies, setDealCurrencies] = useState([]);
+  const [dealQuantities, setDealQuantities] = useState([]);
+  const [editingQuantityIndex, setEditingQuantityIndex] = useState(null);
+
+  const displayRates = useMemo(() => {
+    const grouped = new Map();
+
+    rates.forEach((rate) => {
+      const key = `${rate.ccyPair}|${rate.tenor}`;
+      const existing = grouped.get(key);
+      const existingUpdatedAt = existing?.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const nextUpdatedAt = rate?.updatedAt ? new Date(rate.updatedAt).getTime() : 0;
+
+      if (!existing || nextUpdatedAt > existingUpdatedAt || (nextUpdatedAt === existingUpdatedAt && Number(rate.qty || 0) > Number(existing.qty || 0))) {
+        grouped.set(key, rate);
+      }
+    });
+
+    return [...grouped.values()].sort((left, right) => {
+      const pairOrder = left.ccyPair.localeCompare(right.ccyPair);
+      if (pairOrder !== 0) {
+        return pairOrder;
+      }
+
+      return getTenorSortOrder(left.tenor) - getTenorSortOrder(right.tenor) || left.tenor.localeCompare(right.tenor);
+    });
+  }, [rates]);
+
+  const quoteLookup = useMemo(
+    () => new Map(displayRates.map((rate) => [`${rate.ccyPair}|${rate.tenor}`, rate])),
+    [displayRates]
+  );
+
+  const pairOptions = useMemo(() => [...new Set(displayRates.map((rate) => rate.ccyPair))], [displayRates]);
+
+  const tenorsByPair = useMemo(() => {
+    const tenorMap = new Map();
+
+    displayRates.forEach((rate) => {
+      const currentTenors = tenorMap.get(rate.ccyPair) || [];
+      if (!currentTenors.includes(rate.tenor)) {
+        currentTenors.push(rate.tenor);
+      }
+      currentTenors.sort((left, right) => getTenorSortOrder(left) - getTenorSortOrder(right) || left.localeCompare(right));
+      tenorMap.set(rate.ccyPair, currentTenors);
+    });
+
+    return tenorMap;
+  }, [displayRates]);
 
   const fallbackRates = useMemo(() => {
-    const loweredSearch = search.trim().toLowerCase();
-
     return [...rates]
-      .filter((rate) => (loweredSearch ? rate.ccyPair.toLowerCase().includes(loweredSearch) : true))
       .sort((left, right) => {
-        if (sortBy === 'updated') return new Date(right.updatedAt) - new Date(left.updatedAt);
         return left.ccyPair.localeCompare(right.ccyPair);
       });
-  }, [rates, search, sortBy]);
+  }, [rates]);
 
   useEffect(() => {
     let isMounted = true;
@@ -123,8 +198,6 @@ function FXRateGrid() {
 
       try {
         const data = await fetchFxGrid({
-          search,
-          sort: sortBy,
           limit: maxVisibleRates,
         });
 
@@ -154,9 +227,103 @@ function FXRateGrid() {
       isMounted = false;
       window.clearTimeout(loadTimer);
     };
-  }, [maxVisibleRates, search, sortBy, lastUpdated]);
+  }, [maxVisibleRates, lastUpdated]);
 
   const visibleRates = gridRequestFailed ? fallbackRates.slice(0, maxVisibleRates) : serverRates;
+
+  useEffect(() => {
+    const queryChanged = false;
+    selectionSeedRef.current = { search: '', sortBy: 'pair' };
+
+    setCardSelections((previousSelections) => {
+      const defaultSelections = visibleRates.map((rate) => ({
+        ccyPair: rate.ccyPair,
+        tenor: rate.tenor,
+      }));
+
+      if (!defaultSelections.length) {
+        return [];
+      }
+
+      if (queryChanged || !previousSelections.length || previousSelections.length !== defaultSelections.length) {
+        return defaultSelections;
+      }
+
+      return defaultSelections.map((fallbackSelection, index) => {
+        const previousSelection = previousSelections[index];
+        if (!previousSelection) {
+          return fallbackSelection;
+        }
+
+        const exactKey = `${previousSelection.ccyPair}|${previousSelection.tenor}`;
+        if (quoteLookup.has(exactKey)) {
+          return previousSelection;
+        }
+
+        const availableTenors = tenorsByPair.get(previousSelection.ccyPair);
+        if (availableTenors?.length) {
+          return {
+            ccyPair: previousSelection.ccyPair,
+            tenor: availableTenors[0],
+          };
+        }
+
+        return fallbackSelection;
+      });
+    });
+  }, [quoteLookup, tenorsByPair, visibleRates]);
+
+  const displayedCards = useMemo(
+    () =>
+      cardSelections
+        .map((selection, index) => {
+          const selectedQuote = quoteLookup.get(`${selection.ccyPair}|${selection.tenor}`);
+          return {
+            selection,
+            quote: selectedQuote || visibleRates[index],
+            index,
+          };
+        })
+        .filter((card) => Boolean(card.quote)),
+    [cardSelections, quoteLookup, visibleRates]
+  );
+
+  useEffect(() => {
+    setDealCurrencies((previousSelections) =>
+      displayedCards.map((card, index) => {
+        const { base, terms } = getCurrencyCodes(card.selection.ccyPair);
+        const previousSelection = previousSelections[index];
+
+        if (previousSelection === base || previousSelection === terms) {
+          return previousSelection;
+        }
+
+        return base;
+      })
+    );
+  }, [displayedCards]);
+
+  useEffect(() => {
+    setDealQuantities((previousSelections) =>
+      displayedCards.map((card, index) => {
+        const previousSelection = sanitizeQuantityInput(previousSelections[index]);
+
+        if (previousSelection) {
+          return previousSelection;
+        }
+
+        return getInitialDealQuantity(card.quote);
+      })
+    );
+  }, [displayedCards]);
+
+  useEffect(() => {
+    if (editingQuantityIndex == null || editingQuantityIndex < displayedCards.length) {
+      return;
+    }
+
+    setEditingQuantityIndex(null);
+  }, [displayedCards.length, editingQuantityIndex]);
 
   useEffect(() => {
     const nextSignals = {};
@@ -194,76 +361,62 @@ function FXRateGrid() {
     };
   }, [visibleRates]);
 
-  const downloadExcel = () => {
-    downloadCsv(
-      'fx-rates-workspace.csv',
-      visibleRates.map((rate) => ({
-        Pair: rate.ccyPair,
-        Tenor: rate.tenor,
-        Quantity: rate.qty,
-        Bid: rate.bid,
-        Ask: rate.ask,
-        Source: rate.source,
-        Status: rate.status,
-        UpdatedAt: rate.updatedAt,
-      }))
+  const handlePairChange = (cardIndex, ccyPair) => {
+    const nextTenors = tenorsByPair.get(ccyPair) || [];
+    const nextTenor = nextTenors[0] || 'SP';
+
+    setCardSelections((previousSelections) =>
+      previousSelections.map((selection, index) =>
+        index === cardIndex
+          ? {
+              ccyPair,
+              tenor: nextTenor,
+            }
+          : selection
+      )
     );
   };
 
+  const handleTenorChange = (cardIndex, tenor) => {
+    setCardSelections((previousSelections) =>
+      previousSelections.map((selection, index) =>
+        index === cardIndex
+          ? {
+              ...selection,
+              tenor,
+            }
+          : selection
+      )
+    );
+  };
+
+  const toggleDealCurrency = (cardIndex, base, terms) => {
+    if (!base || !terms) {
+      return;
+    }
+
+    setDealCurrencies((previousSelections) =>
+      previousSelections.map((selection, index) => (index === cardIndex ? (selection === terms ? base : terms) : selection))
+    );
+  };
+
+  const handleDealQuantityChange = (cardIndex, value) => {
+    const nextValue = sanitizeQuantityInput(value);
+
+    setDealQuantities((previousSelections) => previousSelections.map((selection, index) => (index === cardIndex ? nextValue : selection)));
+  };
+
+  const buildBookingState = (rate, direction, dealtCurrency, valueDate, qty) => ({
+    quote: rate,
+    direction,
+    dealtCurrency,
+    valueDate,
+    qty,
+  });
+
   return (
     <Stack spacing={3}>
-      <Paper sx={{ p: { xs: 1.25, md: 1.5 } }}>
-        <Stack
-          direction={{ xs: 'column', xl: 'row' }}
-          spacing={1}
-          sx={{
-            alignItems: { xs: 'stretch', xl: 'center' },
-            justifyContent: 'space-between',
-          }}
-        >
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <Chip size="small" label={isDemo ? 'Demo feed' : 'Live feed'} color={isDemo ? 'warning' : 'primary'} />
-            <Chip size="small" label={`${visibleRates.length} instruments`} variant="outlined" />
-            <Chip size="small" label={`Updated ${formatRelativeTime(lastUpdated)}`} variant="outlined" />
-          </Stack>
-
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={1}
-            sx={{ alignItems: { xs: 'stretch', md: 'center' }, flexShrink: 0 }}
-          >
-            <TextField
-              size="small"
-              label="Search pair"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="EURUSD"
-              sx={{ minWidth: { md: 220 } }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchRoundedIcon color="action" />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-            <TextField size="small" select label="Sort by" value={sortBy} onChange={(event) => setSortBy(event.target.value)} sx={{ minWidth: { md: 180 } }}>
-              <MenuItem value="pair">Currency pair</MenuItem>
-              <MenuItem value="updated">Latest refresh</MenuItem>
-            </TextField>
-            <Button size="small" variant="outlined" startIcon={<SyncRoundedIcon />} onClick={refresh}>
-              Refresh
-            </Button>
-            <Button size="small" variant="contained" startIcon={<DownloadRoundedIcon />} onClick={downloadExcel}>
-              Export
-            </Button>
-          </Stack>
-        </Stack>
-
-        {error ? <Alert severity="warning" sx={{ mt: 1 }}>{error}</Alert> : null}
-      </Paper>
+      {error ? <Alert severity="warning">{error}</Alert> : null}
 
       <Box
         sx={{
@@ -272,16 +425,74 @@ function FXRateGrid() {
           gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
         }}
       >
-        {visibleRates.map((rate) => (
-          <Card key={`${rate.ccyPair}-${rate.tenor}`} sx={{ borderRadius: 1 }}>
+        {displayedCards.map(({ quote: rate, selection, index }) => {
+          const { base, terms } = getCurrencyCodes(selection.ccyPair);
+          const valueDate = calculateSettlementDate(new Date().toISOString(), selection.tenor);
+          const selectedDealCurrency = dealCurrencies[index] || base;
+          const selectedDealQuantity = dealQuantities[index] || getInitialDealQuantity(rate);
+          const bookingQuantity = Number.parseInt(selectedDealQuantity, 10) || Number.parseInt(getInitialDealQuantity(rate), 10);
+          const nextDealCurrency = selectedDealCurrency === base ? terms : base;
+
+          return (
+            <Card key={`${selection.ccyPair}-${selection.tenor}-${index}`} sx={{ borderRadius: 1 }}>
             <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, '&:last-child': { pb: { xs: 1.5, md: 1.75 } } }}>
               <Stack spacing={1.5}>
                 <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Box>
-                    <Typography variant="h6" sx={{ letterSpacing: '0.08em', fontWeight: 700 }}>
-                      {rate.ccyPair}
-                    </Typography>
-                  </Box>
+                  <Stack direction="row" spacing={0.5} sx={{ width: '100%', flexWrap: 'wrap' }}>
+                    <TextField
+                      select
+                      size="small"
+                      value={selection.ccyPair}
+                      onChange={(event) => handlePairChange(index, event.target.value)}
+                      sx={{
+                        minWidth: 138,
+                        flex: 1,
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 0.45,
+                          bgcolor: 'rgba(255,255,255,0.02)',
+                        },
+                        '& .MuiSelect-select': {
+                          py: 0.6,
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.04em',
+                        },
+                      }}
+                    >
+                      {pairOptions.map((pairOption) => (
+                        <MenuItem key={pairOption} value={pairOption}>
+                          {pairOption}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      select
+                      size="small"
+                      value={selection.tenor}
+                      onChange={(event) => handleTenorChange(index, event.target.value)}
+                      sx={{
+                        width: 88,
+                        flexShrink: 0,
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 0.45,
+                          bgcolor: 'rgba(255,255,255,0.02)',
+                        },
+                        '& .MuiSelect-select': {
+                          py: 0.6,
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.04em',
+                          textAlign: 'center',
+                        },
+                      }}
+                    >
+                      {(tenorsByPair.get(selection.ccyPair) || [selection.tenor]).map((tenorOption) => (
+                        <MenuItem key={tenorOption} value={tenorOption}>
+                          {tenorOption}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Stack>
                 </Stack>
 
                 <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
@@ -292,7 +503,11 @@ function FXRateGrid() {
                       color="error"
                       variant="outlined"
                       sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
-                      onClick={() => navigate('/app/booking', { state: { quote: rate, direction: 'Sell' } })}
+                      onClick={() =>
+                        navigate('/app/booking', {
+                          state: buildBookingState(rate, 'Sell', selectedDealCurrency, valueDate, bookingQuantity),
+                        })
+                      }
                     >
                       Sell
                     </Button>
@@ -305,17 +520,101 @@ function FXRateGrid() {
                       color="success"
                       variant="contained"
                       sx={{ mt: 1, minHeight: 40, fontWeight: 700 }}
-                      onClick={() => navigate('/app/booking', { state: { quote: rate, direction: 'Buy' } })}
+                      onClick={() =>
+                        navigate('/app/booking', {
+                          state: buildBookingState(rate, 'Buy', selectedDealCurrency, valueDate, bookingQuantity),
+                        })
+                      }
                     >
                       Buy
                     </Button>
                   </Paper>
                 </Box>
 
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 0.75,
+                    borderRadius: 0.75,
+                    borderColor: 'rgba(255,255,255,0.08)',
+                    bgcolor: 'rgba(255,255,255,0.02)',
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={0.75}
+                    sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: 0.75 }}
+                  >
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.25,
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 0.6,
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(255,255,255,0.02)',
+                        minWidth: 0,
+                        flex: '1 1 auto',
+                      }}
+                    >
+                      <InputBase
+                        value={editingQuantityIndex === index ? selectedDealQuantity : formatDealQuantity(selectedDealQuantity)}
+                        onChange={(event) => handleDealQuantityChange(index, event.target.value)}
+                        onFocus={(event) => {
+                          setEditingQuantityIndex(index);
+                          event.target.select();
+                        }}
+                        onBlur={() => {
+                          setEditingQuantityIndex((currentIndex) => (currentIndex === index ? null : currentIndex));
+                        }}
+                        inputProps={{
+                          'aria-label': `${selection.ccyPair} quantity`,
+                          inputMode: 'numeric',
+                          pattern: '[0-9,]*',
+                        }}
+                        sx={{
+                          flex: '0 1 140px',
+                          minWidth: 96,
+                          fontWeight: 700,
+                          fontSize: '0.95rem',
+                          fontVariantNumeric: 'tabular-nums',
+                          '& input': {
+                            p: 0,
+                            textAlign: 'right',
+                          },
+                        }}
+                      />
+                      <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em' }}>
+                        {selectedDealCurrency}
+                      </Typography>
+                      <Tooltip title={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            onClick={() => toggleDealCurrency(index, base, terms)}
+                            disabled={!nextDealCurrency}
+                            aria-label={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}
+                            sx={{ color: 'text.secondary' }}
+                          >
+                            <SwapHorizRoundedIcon fontSize="inherit" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Box>
+
+                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto' }}>
+                      {valueDate}
+                    </Typography>
+                  </Stack>
+                </Paper>
+
               </Stack>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </Box>
 
       {!visibleRates.length && !(isLoading || isGridLoading) ? (

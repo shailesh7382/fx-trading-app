@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -20,7 +20,7 @@ import { fallbackCustomers, fallbackRelationshipManagers, fallbackSales } from '
 import { calculateSettlementDate, formatCurrency, formatNotional, formatRate, getCurrencyCodes } from '../utils/formatters';
 import UserContext from './UserContext';
 
-const tenorOptions = ['SP', '1M', '3M', '6M', '1Y'];
+const tenorOptions = ['SP', '1W', '1M', '3M', '6M', '1Y'];
 const directionOptions = ['Buy', 'Sell'];
 const quoteDurationSeconds = 30;
 
@@ -32,21 +32,29 @@ function getMarketPrice(direction, rate) {
   return direction === 'Sell' ? String(rate.bid) : String(rate.ask);
 }
 
-function buildInitialForm(quote, direction) {
+function buildInitialForm(quote, direction, launchState = {}) {
   const today = new Date().toISOString().slice(0, 10);
+  const initialTenor = quote?.tenor || 'SP';
+  const initialSettlementDate = launchState.valueDate || launchState.settlementDate || calculateSettlementDate(today, initialTenor);
+  const launchQuantity = Number.parseInt(String(launchState.qty ?? ''), 10);
+  const initialQuantity = Number.isNaN(launchQuantity)
+    ? quote?.qty
+      ? String(Math.round(quote.qty))
+      : '1000000'
+    : String(launchQuantity);
 
   return {
     ccyPair: quote?.ccyPair || '',
-    tenor: quote?.tenor || 'SP',
-    qty: quote?.qty ? String(Math.round(quote.qty)) : '1000000',
+    tenor: initialTenor,
+    qty: initialQuantity,
     price: getMarketPrice(direction || 'Buy', quote),
     direction: direction || 'Buy',
-    dealtCurrency: getCurrencyCodes(quote?.ccyPair).base || '',
+    dealtCurrency: launchState.dealtCurrency || getCurrencyCodes(quote?.ccyPair).base || '',
     customer: '',
     rm: '',
     sales: '',
     tradeDate: today,
-    settlementDate: calculateSettlementDate(today, quote?.tenor || 'SP'),
+    settlementDate: initialSettlementDate,
     comments: '',
   };
 }
@@ -58,7 +66,20 @@ function FXTradeBooking() {
   const { rates, isDemo } = useOutletContext();
   const incomingQuote = location.state?.quote;
   const incomingDirection = location.state?.direction || 'Buy';
-  const [formData, setFormData] = useState(() => buildInitialForm(incomingQuote, incomingDirection));
+  const incomingDealCurrency = location.state?.dealtCurrency;
+  const incomingQty = location.state?.qty;
+  const incomingValueDate = location.state?.valueDate || location.state?.settlementDate;
+  const hasIncomingBookingState = Boolean(
+    location.state?.quote || location.state?.direction || location.state?.dealtCurrency || location.state?.valueDate || location.state?.settlementDate || location.state?.qty
+  );
+  const preserveIncomingValueDateRef = useRef(Boolean(incomingValueDate));
+  const [formData, setFormData] = useState(() =>
+    buildInitialForm(incomingQuote, incomingDirection, {
+      dealtCurrency: incomingDealCurrency,
+      qty: incomingQty,
+      valueDate: incomingValueDate,
+    })
+  );
   const [customers, setCustomers] = useState(fallbackCustomers);
   const [relationshipManagers, setRelationshipManagers] = useState(fallbackRelationshipManagers);
   const [salesPeople, setSalesPeople] = useState(fallbackSales);
@@ -114,6 +135,30 @@ function FXTradeBooking() {
   }, []);
 
   useEffect(() => {
+    if (!hasIncomingBookingState) {
+      return;
+    }
+
+    preserveIncomingValueDateRef.current = Boolean(incomingValueDate);
+    setFormData(
+      buildInitialForm(incomingQuote, incomingDirection, {
+        dealtCurrency: incomingDealCurrency,
+        qty: incomingQty,
+        valueDate: incomingValueDate,
+      })
+    );
+    setQuoteExpiresAt(Date.now() + quoteDurationSeconds * 1000);
+    setQuoteTimeLeft(quoteDurationSeconds);
+    setSeverity('info');
+    setMessage('');
+  }, [hasIncomingBookingState, incomingDealCurrency, incomingDirection, incomingQty, incomingQuote, incomingValueDate, location.key]);
+
+  useEffect(() => {
+    if (preserveIncomingValueDateRef.current) {
+      preserveIncomingValueDateRef.current = false;
+      return;
+    }
+
     setFormData((current) => ({
       ...current,
       settlementDate: calculateSettlementDate(current.tradeDate, current.tenor),
@@ -296,14 +341,21 @@ function FXTradeBooking() {
                 ))}
               </TextField>
               <TextField label="Price" name="price" value={formData.price} onChange={handleFieldChange} type="number" />
-              <TextField label="Trade date" name="tradeDate" value={formData.tradeDate} onChange={handleFieldChange} type="date" InputLabelProps={{ shrink: true }} />
+              <TextField
+                label="Trade date"
+                name="tradeDate"
+                value={formData.tradeDate}
+                onChange={handleFieldChange}
+                type="date"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
               <TextField
                 label="Settlement date"
                 name="settlementDate"
                 value={formData.settlementDate}
                 onChange={handleFieldChange}
                 type="date"
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Box>
 
