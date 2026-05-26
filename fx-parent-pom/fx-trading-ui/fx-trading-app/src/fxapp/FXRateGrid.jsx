@@ -665,7 +665,7 @@ function FXRateGrid() {
           display: 'grid',
           gap: 1.5,
           alignItems: 'start',
-          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.75fr) minmax(320px, 0.9fr)' },
+          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.85fr) minmax(280px, 0.72fr)' },
         }}
       >
         <Box
@@ -881,7 +881,7 @@ function FXRateGrid() {
                               sx={{
                                 display: 'grid',
                                 gap: 1,
-                                gridTemplateColumns: '84px minmax(0, 1fr) 72px',
+                                gridTemplateColumns: '84px minmax(0, 1fr)',
                                 alignItems: 'start',
                               }}
                             >
@@ -897,13 +897,22 @@ function FXRateGrid() {
                                 sx={{
                                   '& .MuiInputBase-root': {
                                     minHeight: 34,
+                                    bgcolor: 'rgba(255,255,255,0.035)',
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                                   },
                                   '& .MuiSelect-select': {
                                     fontSize: '0.78rem',
+                                    fontWeight: 700,
                                     py: 0.75,
                                   },
                                   '& .MuiOutlinedInput-root': {
-                                    borderRadius: 0,
+                                    borderRadius: 1.2,
+                                  },
+                                  '& .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: 'rgba(255,255,255,0.12)',
+                                  },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: 'rgba(255,255,255,0.18)',
                                   },
                                 }}
                               >
@@ -920,16 +929,28 @@ function FXRateGrid() {
                                 sx={{
                                   '& .MuiInputBase-root': {
                                     minHeight: 34,
+                                    bgcolor: 'rgba(255,255,255,0.035)',
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                                   },
                                   '& .MuiInputBase-input': {
                                     fontSize: '0.8rem',
+                                    fontWeight: 700,
                                     py: 0.85,
                                   },
                                   '& .MuiOutlinedInput-root': {
-                                    borderRadius: 0,
+                                    borderRadius: 1.2,
+                                  },
+                                  '& .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: 'rgba(255,255,255,0.12)',
+                                  },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: 'rgba(255,255,255,0.18)',
                                   },
                                 }}
                               />
+                            </Box>
+
+                            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
                               <TextField
                                 select
                                 size="small"
@@ -940,41 +961,51 @@ function FXRateGrid() {
                                   htmlInput: { 'aria-label': `${selection.ccyPair} limit order tif` },
                                 }}
                                 sx={{
+                                  width: 82,
                                   '& .MuiInputBase-root': {
                                     minHeight: 34,
+                                    bgcolor: 'rgba(255,255,255,0.035)',
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                                   },
                                   '& .MuiSelect-select': {
                                     fontSize: '0.78rem',
+                                    fontWeight: 700,
                                     py: 0.75,
                                   },
                                   '& .MuiOutlinedInput-root': {
-                                    borderRadius: 0,
+                                    borderRadius: 1.2,
+                                  },
+                                  '& .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: 'rgba(255,255,255,0.12)',
+                                  },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: 'rgba(255,255,255,0.18)',
                                   },
                                 }}
                               >
                                 <MenuItem value="GTC">GTC</MenuItem>
                                 <MenuItem value="GTD">GTD</MenuItem>
                               </TextField>
-                            </Box>
 
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() =>
-                                handleSubmitLimitOrder({
-                                  cardIndex: index,
-                                  form: limitOrderForm,
-                                  selection,
-                                  dealtCurrency: selectedDealCurrency,
-                                  qty: selectedDealQuantity,
-                                  settlementDate: valueDate,
-                                })
-                              }
-                              disabled={submittingLimitIndex === index}
-                              sx={{ alignSelf: 'flex-start', minHeight: 34, fontSize: '0.8rem', px: 1.35 }}
-                            >
-                              {submittingLimitIndex === index ? 'Submitting…' : 'Submit limit order'}
-                            </Button>
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() =>
+                                  handleSubmitLimitOrder({
+                                    cardIndex: index,
+                                    form: limitOrderForm,
+                                    selection,
+                                    dealtCurrency: selectedDealCurrency,
+                                    qty: selectedDealQuantity,
+                                    settlementDate: valueDate,
+                                  })
+                                }
+                                disabled={submittingLimitIndex === index}
+                                sx={{ minHeight: 34, fontSize: '0.78rem', px: 1.2 }}
+                              >
+                                {submittingLimitIndex === index ? 'Submitting…' : 'Submit limit order'}
+                              </Button>
+                            </Stack>
                           </>
                         ) : (
                           <Alert severity="info" sx={{ mb: 0 }}>
