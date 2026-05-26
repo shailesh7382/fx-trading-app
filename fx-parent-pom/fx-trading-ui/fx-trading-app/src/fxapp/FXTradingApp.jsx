@@ -29,14 +29,14 @@ import AddCardRoundedIcon from '@mui/icons-material/AddCardRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
-import { useTheme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import UserContext from './UserContext';
 import useWorkspaceData from './useWorkspaceData';
 import { formatDateTime, formatRelativeTime } from '../utils/formatters';
 import ecxIcon from '../assets/eCX-icon.svg';
 
-const drawerWidth = 292;
+const drawerWidth = 280;
 
 const navigationItems = [
   { label: 'Rates', path: '/app/rates', icon: <CandlestickChartRoundedIcon /> },
@@ -84,64 +84,100 @@ function FXTradingApp() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const pageMeta = pageTitles[location.pathname] || pageTitles['/app/rates'];
-  const livePairs = workspaceData.rates.length;
-  const deskChips = useMemo(
+  const userDisplayName = userDetails?.username || 'Trader';
+  const userRole = userDetails?.userType || 'FX Desk';
+  const userRegion = userDetails?.region || 'Global';
+
+  const userSummaryItems = useMemo(
     () => [
-      { label: workspaceData.isDemo ? 'Demo data' : 'Live data', color: workspaceData.isDemo ? 'warning' : 'primary' },
-      { label: `${livePairs} instruments`, color: 'default' },
-      { label: `${trades.length} trades`, color: 'default' },
+      { label: 'Email', value: userDetails?.email || 'n/a' },
+      { label: 'Last sign-in', value: formatDateTime(userDetails?.lastLoginTimestamp) },
+      { label: 'Feed', value: `Updated ${formatRelativeTime(workspaceData.lastUpdated)}` },
     ],
-    [livePairs, trades.length, workspaceData.isDemo]
+    [userDetails?.email, userDetails?.lastLoginTimestamp, workspaceData.lastUpdated]
   );
 
   const drawerContent = (
     <Stack sx={{ height: '100%' }}>
-      <Box sx={{ p: 2.25 }}>
+      <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-          <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 42, height: 42, flexShrink: 0 }} />
-          <Box>
-            <Typography variant="overline" color="primary.main">
+          <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 36, height: 36, flexShrink: 0 }} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="overline" color="primary.light" sx={{ letterSpacing: 1.4, lineHeight: 1.2 }}>
               eCX
             </Typography>
-            <Typography variant="h5" sx={{ mt: 0.2 }}>
-              Trading Application
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
+              FX trading workspace
             </Typography>
           </Box>
         </Stack>
-        <Typography color="text.secondary" sx={{ mt: 1.25 }}>
-          Access pricing, booking, blotter, analysis, and portfolio screens from one interface.
-        </Typography>
       </Box>
 
-      <Paper sx={{ mx: 2, p: 2, bgcolor: 'rgba(7, 17, 31, 0.65)' }}>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-          <Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
-            {userDetails?.username?.charAt(0)?.toUpperCase() || 'T'}
+      <Paper
+        sx={{
+          mx: 2,
+          p: 1.5,
+          borderRadius: 1,
+          bgcolor: alpha(theme.palette.common.white, 0.04),
+          border: 'none',
+          boxShadow: 'none',
+        }}
+      >
+        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+          <Avatar sx={{ width: 38, height: 38, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.95rem', fontWeight: 700 }}>
+            {userDisplayName.charAt(0)?.toUpperCase() || 'T'}
           </Avatar>
-          <Box>
-            <Typography variant="subtitle1">{userDetails?.username || 'Trader'}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {userDetails?.userType || 'FX Desk'} · {userDetails?.region || 'Global'}
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Typography variant="subtitle2" noWrap>
+              {userDisplayName}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {userRole}
             </Typography>
           </Box>
+          <Tooltip title="Sign out">
+            <IconButton
+              size="small"
+              color="inherit"
+              onClick={() => {
+                logout();
+                navigate('/');
+              }}
+              sx={{ color: 'text.secondary' }}
+            >
+              <LogoutRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Stack>
 
-        <Divider sx={{ my: 1.5 }} />
+        <Stack direction="row" gap={0.75} sx={{ mt: 1.25, flexWrap: 'wrap' }}>
+          <Chip size="small" label={userRegion} variant="outlined" sx={{ height: 22 }} />
+          <Chip size="small" label={`${trades.length} trades`} variant="outlined" sx={{ height: 22 }} />
+        </Stack>
 
-        <Stack spacing={0.75}>
-          <Typography variant="body2" color="text.secondary">
-            {userDetails?.email || 'no-email@available'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Last sign-in: {formatDateTime(userDetails?.lastLoginTimestamp)}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Feed refreshed {formatRelativeTime(workspaceData.lastUpdated)}
-          </Typography>
+        <Divider sx={{ my: 1.25 }} />
+
+        <Stack spacing={0.85}>
+          {userSummaryItems.map((item) => (
+            <Stack key={item.label} direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                {item.label}
+              </Typography>
+              <Typography variant="caption" sx={{ textAlign: 'right', maxWidth: 150 }}>
+                {item.value}
+              </Typography>
+            </Stack>
+          ))}
         </Stack>
       </Paper>
 
-      <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
+      <Box sx={{ px: 2, pt: 1.5 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2 }}>
+          Navigation
+        </Typography>
+      </Box>
+
+      <List sx={{ px: 1.25, py: 1.25, flexGrow: 1 }}>
         {navigationItems.map((item) => {
           const selected = location.pathname.startsWith(item.path);
 
@@ -153,25 +189,49 @@ function FXTradingApp() {
                 navigate(item.path);
                 setMobileOpen(false);
               }}
-              sx={{ mb: 0.5, borderRadius: 3 }}
+              sx={{
+                mb: 0.5,
+                minHeight: 46,
+                borderRadius: 1,
+                px: 1.2,
+                color: selected ? 'text.primary' : 'text.secondary',
+                border: '1px solid transparent',
+                '& .MuiListItemIcon-root': {
+                  color: selected ? 'primary.light' : 'text.secondary',
+                },
+                '& .MuiListItemText-primary': {
+                  fontSize: '0.94rem',
+                  fontWeight: selected ? 700 : 600,
+                },
+                '&.Mui-selected': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.14),
+                  borderColor: alpha(theme.palette.primary.light, 0.2),
+                },
+                '&.Mui-selected:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                },
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.common.white, 0.04),
+                },
+              }}
             >
-              <ListItemIcon sx={{ minWidth: 42 }}>{item.icon}</ListItemIcon>
+              <ListItemIcon
+                sx={{
+                  minWidth: 34,
+                  mr: 0.75,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {item.icon}
+              </ListItemIcon>
               <ListItemText primary={item.label} />
             </ListItemButton>
           );
         })}
       </List>
 
-      <Box sx={{ p: 2 }}>
-        <Paper sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.65)' }}>
-          <Typography variant="subtitle2">Desk status</Typography>
-          <Stack direction="row" gap={1} sx={{ mt: 1.25, flexWrap: 'wrap' }}>
-            {deskChips.map((chip) => (
-              <Chip key={chip.label} label={chip.label} color={chip.color} size="small" />
-            ))}
-          </Stack>
-        </Paper>
-      </Box>
     </Stack>
   );
 
@@ -262,7 +322,7 @@ function FXTradingApp() {
             right: 12,
             bottom: 12,
             zIndex: theme.zIndex.appBar,
-            borderRadius: 999,
+            borderRadius: 1,
             overflow: 'hidden',
             bgcolor: 'rgba(11, 23, 40, 0.88)',
           }}

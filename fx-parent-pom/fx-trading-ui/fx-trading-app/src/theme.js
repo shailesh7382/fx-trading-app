@@ -43,7 +43,7 @@ const appTheme = createTheme({
     divider: borderTint,
   },
   shape: {
-    borderRadius: 20,
+    borderRadius: 4,
   },
   typography: {
     fontFamily: [
@@ -88,7 +88,7 @@ const appTheme = createTheme({
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 24,
+          borderRadius: 4,
           border: `1px solid ${alpha(brandBlueGlow, 0.12)}`,
           backgroundColor: alpha(ink700, 0.76),
           backgroundImage: 'none',
@@ -101,7 +101,7 @@ const appTheme = createTheme({
       },
       styleOverrides: {
         root: {
-          borderRadius: 14,
+          borderRadius: 4,
           paddingInline: 16,
         },
         containedPrimary: {
@@ -115,7 +115,7 @@ const appTheme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 999,
+          borderRadius: 4,
         },
       },
     },

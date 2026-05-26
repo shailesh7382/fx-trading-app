@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   LinearProgress,
   MenuItem,
   Paper,
@@ -14,8 +13,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import DoneAllRoundedIcon from '@mui/icons-material/DoneAllRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
-import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
-import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
+import { useLocation, useOutletContext } from 'react-router-dom';
 import { fetchLookup } from '../api/client';
 import { fallbackCustomers, fallbackRelationshipManagers, fallbackSales } from '../data/mockData';
 import { calculateSettlementDate, formatCurrency, formatNotional, formatRate, getCurrencyCodes } from '../utils/formatters';
@@ -63,9 +61,8 @@ function buildInitialForm(quote, direction, launchState = {}) {
 
 function FXTradeBooking() {
   const location = useLocation();
-  const navigate = useNavigate();
   const { userDetails, bookTrade } = useContext(UserContext);
-  const { rates, isDemo } = useOutletContext();
+  const { rates } = useOutletContext();
   const incomingQuote = location.state?.quote;
   const incomingDirection = location.state?.direction || 'Buy';
   const incomingDealCurrency = location.state?.dealtCurrency;
@@ -109,6 +106,37 @@ function FXTradeBooking() {
 
   const quoteExpired = quoteTimeLeft <= 0;
   const notional = Number(formData.qty || 0) * Number(formData.price || 0);
+  const isFormComplete = useMemo(() => {
+    const requiredValues = [
+      formData.ccyPair,
+      formData.tenor,
+      formData.direction,
+      formData.dealtCurrency,
+      formData.tradeDate,
+      formData.settlementDate,
+      formData.rm,
+      formData.sales,
+      formData.comments,
+    ];
+
+    const hasRequiredText = requiredValues.every((value) => String(value || '').trim().length > 0);
+    const quantity = Number(formData.qty);
+    const price = Number(formData.price);
+
+    return hasRequiredText && Number.isFinite(quantity) && quantity > 0 && Number.isFinite(price) && price > 0;
+  }, [
+    formData.ccyPair,
+    formData.comments,
+    formData.dealtCurrency,
+    formData.direction,
+    formData.price,
+    formData.qty,
+    formData.rm,
+    formData.sales,
+    formData.settlementDate,
+    formData.tenor,
+    formData.tradeDate,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -233,15 +261,15 @@ function FXTradeBooking() {
     setQuoteExpiresAt(Date.now() + quoteDurationSeconds * 1000);
     setQuoteTimeLeft(quoteDurationSeconds);
     setSeverity('info');
-    setMessage('Quote repriced from the latest market snapshot.');
+    setMessage('Quote refreshed from the latest market snapshot.');
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!formData.ccyPair || !formData.rm || !formData.sales || !formData.price) {
+    if (!isFormComplete) {
       setSeverity('error');
-      setMessage('Complete the market and coverage fields before booking.');
+      setMessage('Complete all booking fields before booking the trade.');
       return;
     }
 
@@ -254,23 +282,23 @@ function FXTradeBooking() {
     setIsSubmitting(true);
 
     try {
-      const bookedTrade = await bookTrade({
+      await bookTrade({
         ...formData,
         qty: Number(formData.qty),
         price: Number(formData.price),
         trader: userDetails?.username || 'demo.trader',
         marketSource: activeRate?.source || 'MANUAL',
+      }).then((bookedTrade) => {
+        setSeverity('success');
+        setMessage(`Trade ${bookedTrade.id} booked successfully (${bookedTrade.bookingMode} capture).`);
       });
-
-      setSeverity('success');
-      setMessage(`Trade ${bookedTrade.id} booked successfully (${bookedTrade.bookingMode} capture).`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const bookingPaperSx = {
-    borderRadius: 3,
+    borderRadius: 1,
     border: '1px solid',
     borderColor: (theme) => alpha(theme.palette.primary.light, 0.18),
     bgcolor: (theme) => alpha(theme.palette.common.white, 0.05),
@@ -301,11 +329,10 @@ function FXTradeBooking() {
       >
         <Paper component="form" onSubmit={handleSubmit} sx={{ ...bookingPaperSx, p: { xs: 1.75, md: 2.25 } }}>
           <Stack spacing={2}>
+            {message ? <Alert severity={severity}>{message}</Alert> : null}
+
             <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>1. Market terms</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
-                Pre-filled from the quote card when launched from rates, but still editable for manual workflow.
-              </Typography>
+              <Typography variant="h5">FX trade booking</Typography>
             </Box>
 
             <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' } }}>
@@ -360,10 +387,6 @@ function FXTradeBooking() {
             </Box>
 
             <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>2. Coverage and comments</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35, mb: 1 }}>
-                Coverage stays editable while customer routing defaults automatically for faster capture.
-              </Typography>
               <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' } }}>
                 <TextField size="small" select label="Relationship manager" name="rm" value={formData.rm} onChange={handleFieldChange}>
                   {relationshipManagers.map((rm) => (
@@ -395,29 +418,26 @@ function FXTradeBooking() {
             <Box
               sx={{
                 p: 1.25,
-                borderRadius: 2.5,
-                border: '1px solid',
-                borderColor: quoteExpired ? 'error.main' : (theme) => alpha(theme.palette.primary.light, 0.24),
+                borderRadius: 1,
                 bgcolor: (theme) => alpha(theme.palette.common.white, 0.06),
               }}
             >
-              <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.9 }}>
-                <Typography variant="subtitle2">Quote protection</Typography>
-                <Typography variant="body2" color={quoteExpired ? 'error.main' : 'primary.light'}>
-                  {quoteExpired ? '0s remaining' : `${quoteTimeLeft}s remaining`}
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={quoteProtectionValue}
+                  color={quoteExpired ? 'error' : 'primary'}
+                  sx={{
+                    flex: 1,
+                    height: 8,
+                    borderRadius: 1,
+                    bgcolor: (theme) => alpha(theme.palette.common.white, 0.08),
+                  }}
+                />
+                <Typography variant="body2" color={quoteExpired ? 'error.main' : 'primary.light'} sx={{ flexShrink: 0, minWidth: 88, textAlign: 'right' }}>
+                  {quoteExpired ? '0s left' : `${quoteTimeLeft}s left`}
                 </Typography>
               </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={quoteProtectionValue}
-                color={quoteExpired ? 'error' : 'primary'}
-                sx={{
-                  width: '100%',
-                  height: 8,
-                  borderRadius: 999,
-                  bgcolor: (theme) => alpha(theme.palette.common.white, 0.08),
-                }}
-              />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
                 The streamed price remains bookable for up to {quoteDurationSeconds} seconds before repricing is required.
               </Typography>
@@ -427,7 +447,7 @@ function FXTradeBooking() {
               <Button size="small" type="button" variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={repriceTicket}>
                 Refresh quote timer
               </Button>
-              <Button size="small" type="submit" variant="contained" startIcon={<DoneAllRoundedIcon />} disabled={isSubmitting || quoteExpired} sx={{ minWidth: { sm: 168 } }}>
+              <Button size="small" type="submit" variant="contained" startIcon={<DoneAllRoundedIcon />} disabled={isSubmitting || quoteExpired || !isFormComplete} sx={{ minWidth: { sm: 168 } }}>
                 {isSubmitting ? 'Booking trade…' : 'Book trade'}
               </Button>
             </Stack>
