@@ -111,6 +111,18 @@ test('shows active limit orders on the right-hand side', async () => {
   expect(screen.getByText(/Buy EURUSD/i)).toBeInTheDocument();
 });
 
+test('defaults the rates screen to manual RFQ mode and supports manual refresh', async () => {
+  const user = userEvent.setup();
+  const { refresh } = renderRateGrid();
+
+  const ratesToggle = await screen.findByRole('switch', { name: /manual rfq/i });
+  expect(ratesToggle).not.toBeChecked();
+
+  await user.click(screen.getByRole('button', { name: /refresh rates/i }));
+
+  expect(refresh).toHaveBeenCalledWith({ forceRates: true });
+});
+
 test('submits a spot GTD limit order from the rate grid', async () => {
   const user = userEvent.setup();
   const { refresh } = renderRateGrid({ limitOrders: [] });

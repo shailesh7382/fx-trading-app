@@ -32,37 +32,43 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
   const [rates, setRates] = useState(() => normalizeRates(getFallbackRates()));
   const [isLoading, setIsLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
+  const [isRatesStreaming, setRatesStreaming] = useState(false);
   const [error, setError] = useState('');
   const [limitOrders, setLimitOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
 
-  const refresh = useCallback(async () => {
-    const [ratesResult, limitOrdersResult, notificationsResult] = await Promise.allSettled([
-      fetchFxPrices(),
-      fetchLimitOrders(),
-      fetchNotifications({ limit: 12 }),
-    ]);
+  const refresh = useCallback(async ({ forceRates = true } = {}) => {
+    const tasks = [fetchLimitOrders(), fetchNotifications({ limit: 12 })];
 
-    if (ratesResult.status === 'fulfilled') {
-      const liveRates = ratesResult.value;
-      const normalized = normalizeRates(liveRates, previousRatesRef.current);
-      previousRatesRef.current = normalized;
-      setRates(normalized);
-      setIsDemo(false);
-      setError('');
-      setLastUpdated(new Date().toISOString());
-    } else {
-      const simulated = normalizeRates(
-        simulateMarketSnapshot(previousRatesRef.current.length ? previousRatesRef.current : getFallbackRates()),
-        previousRatesRef.current
-      );
-      previousRatesRef.current = simulated;
-      setRates(simulated);
-      setIsDemo(true);
-      setError('Live pricing is unavailable, so demo liquidity is currently powering the workspace.');
-      setLastUpdated(new Date().toISOString());
+    if (forceRates) {
+      tasks.unshift(fetchFxPrices());
+    }
+
+    const results = await Promise.allSettled(tasks);
+    const ratesResult = forceRates ? results[0] : null;
+    const limitOrdersResult = forceRates ? results[1] : results[0];
+    const notificationsResult = forceRates ? results[2] : results[1];
+
+    if (forceRates && ratesResult) {
+      if (ratesResult.status === 'fulfilled') {
+        const liveRates = ratesResult.value;
+        const normalized = normalizeRates(liveRates, previousRatesRef.current);
+        previousRatesRef.current = normalized;
+        setRates(normalized);
+        setIsDemo(false);
+        setError('');
+      } else {
+        const simulated = normalizeRates(
+          simulateMarketSnapshot(previousRatesRef.current.length ? previousRatesRef.current : getFallbackRates()),
+          previousRatesRef.current
+        );
+        previousRatesRef.current = simulated;
+        setRates(simulated);
+        setIsDemo(true);
+        setError('Live pricing is unavailable, so demo liquidity is currently powering the workspace.');
+      }
     }
 
     if (limitOrdersResult.status === 'fulfilled') {
@@ -80,26 +86,40 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
       setNotificationCount(Number.isFinite(payload.unreadCount) ? payload.unreadCount : nextNotifications.length);
     }
 
+    setLastUpdated(new Date().toISOString());
     setIsLoading(false);
   }, []);
 
   useEffect(() => {
-    refresh();
+    refresh({ forceRates: true });
   }, [refresh]);
+
+  useEffect(() => {
+    if (!isRatesStreaming) {
+      return undefined;
+    }
+
+    refresh({ forceRates: true });
+    return undefined;
+  }, [isRatesStreaming, refresh]);
 
   useEffect(() => {
     if (!autoRefresh) {
       return undefined;
     }
 
-    const intervalId = window.setInterval(refresh, intervalMs);
+    const intervalId = window.setInterval(() => {
+      refresh({ forceRates: isRatesStreaming });
+    }, intervalMs);
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, intervalMs, refresh]);
+  }, [autoRefresh, intervalMs, isRatesStreaming, refresh]);
 
   return {
     rates,
     isLoading,
     isDemo,
+    isRatesStreaming,
+    setRatesStreaming,
     error,
     limitOrders,
     notifications,

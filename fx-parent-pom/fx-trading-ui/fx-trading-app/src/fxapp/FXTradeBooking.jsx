@@ -104,7 +104,6 @@ function FXTradeBooking() {
     return [base, terms].filter(Boolean);
   }, [activeRate?.ccyPair, formData.ccyPair]);
 
-  const quoteExpired = quoteTimeLeft <= 0;
   const notional = Number(formData.qty || 0) * Number(formData.price || 0);
   const isFormComplete = useMemo(() => {
     const requiredValues = [
@@ -137,6 +136,8 @@ function FXTradeBooking() {
     formData.tenor,
     formData.tradeDate,
   ]);
+  const quoteTimerActive = isFormComplete && Boolean(activeRate);
+  const quoteExpired = quoteTimerActive && quoteTimeLeft <= 0;
 
   useEffect(() => {
     let mounted = true;
@@ -213,12 +214,26 @@ function FXTradeBooking() {
   }, [activeRate, formData.ccyPair, rates]);
 
   useEffect(() => {
+    if (!quoteTimerActive) {
+      return undefined;
+    }
+
     const intervalId = window.setInterval(() => {
       setQuoteTimeLeft(Math.max(0, Math.ceil((quoteExpiresAt - Date.now()) / 1000)));
     }, 250);
 
     return () => window.clearInterval(intervalId);
-  }, [quoteExpiresAt]);
+  }, [quoteExpiresAt, quoteTimerActive]);
+
+  useEffect(() => {
+    if (!quoteTimerActive) {
+      setQuoteTimeLeft(quoteDurationSeconds);
+      return;
+    }
+
+    setQuoteExpiresAt(Date.now() + quoteDurationSeconds * 1000);
+    setQuoteTimeLeft(quoteDurationSeconds);
+  }, [quoteTimerActive]);
 
   const handleFieldChange = (event) => {
     const { name, value } = event.target;
@@ -250,6 +265,12 @@ function FXTradeBooking() {
 
   const repriceTicket = () => {
     if (!activeRate) {
+      return;
+    }
+
+    if (!isFormComplete) {
+      setSeverity('info');
+      setMessage('Complete all booking fields to activate quote timing.');
       return;
     }
 
@@ -307,7 +328,7 @@ function FXTradeBooking() {
     backdropFilter: 'blur(12px)',
   };
 
-  const quoteProtectionValue = Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100);
+  const quoteProtectionValue = quoteTimerActive ? Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100) : 0;
 
   return (
     <Stack
@@ -435,11 +456,13 @@ function FXTradeBooking() {
                   }}
                 />
                 <Typography variant="body2" color={quoteExpired ? 'error.main' : 'primary.light'} sx={{ flexShrink: 0, minWidth: 88, textAlign: 'right' }}>
-                  {quoteExpired ? '0s left' : `${quoteTimeLeft}s left`}
+                  {!quoteTimerActive ? 'Awaiting' : quoteExpired ? '0s left' : `${quoteTimeLeft}s left`}
                 </Typography>
               </Stack>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-                The streamed price remains bookable for up to {quoteDurationSeconds} seconds before repricing is required.
+                {quoteTimerActive
+                  ? `The streamed price remains bookable for up to ${quoteDurationSeconds} seconds before repricing is required.`
+                  : 'Complete all required booking fields to activate quote timing.'}
               </Typography>
             </Box>
 

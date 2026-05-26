@@ -6,11 +6,13 @@ import {
   Card,
   CardContent,
   Chip,
+  FormControlLabel,
   IconButton,
   InputBase,
   MenuItem,
   Paper,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -49,7 +51,7 @@ function getQuoteTileStyles(baseBackground, signal) {
         : {};
 
   return {
-    p: 1.1,
+    p: 0.8,
     borderRadius: 0.75,
     bgcolor: baseBackground,
     border: '1px solid transparent',
@@ -137,18 +139,18 @@ function RateDisplay({ value, accentColor }) {
     >
       <Typography
         component="span"
-        sx={{ fontSize: { xs: '0.95rem', md: '1.05rem' }, fontWeight: 500, color: 'text.secondary', mt: 0.5 }}
+        sx={{ fontSize: { xs: '0.82rem', md: '0.92rem' }, fontWeight: 500, color: 'text.secondary', mt: 0.4 }}
       >
         {major}
       </Typography>
       <Typography
         component="span"
-        sx={{ fontSize: { xs: '2.45rem', md: '3.25rem' }, fontWeight: 800, letterSpacing: '0.01em', color: accentColor }}
+        sx={{ fontSize: { xs: '1.95rem', md: '2.45rem' }, fontWeight: 800, letterSpacing: '0.01em', color: accentColor }}
       >
         {significant}
       </Typography>
       {pipette ? (
-        <Typography component="span" sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, fontWeight: 700, mt: 0.4, color: 'text.secondary' }}>
+        <Typography component="span" sx={{ fontSize: { xs: '0.72rem', md: '0.84rem' }, fontWeight: 700, mt: 0.34, color: 'text.secondary' }}>
           {pipette}
         </Typography>
       ) : null}
@@ -159,11 +161,21 @@ function RateDisplay({ value, accentColor }) {
 function FXRateGrid() {
   const navigate = useNavigate();
   const { userDetails } = useContext(UserContext);
-  const { rates, error, isLoading, lastUpdated, limitOrders = [], refresh } = useOutletContext();
+  const {
+    rates,
+    error,
+    isLoading,
+    lastUpdated,
+    limitOrders = [],
+    refresh,
+    isRatesStreaming = false,
+    setRatesStreaming = () => {},
+  } = useOutletContext();
   const maxVisibleRates = 6;
   const [serverRates, setServerRates] = useState([]);
   const [gridRequestFailed, setGridRequestFailed] = useState(false);
   const [isGridLoading, setIsGridLoading] = useState(false);
+  const [manualGridRefreshVersion, setManualGridRefreshVersion] = useState(0);
   const previousRatesRef = useRef(new Map());
   const selectionSeedRef = useRef({ search: '', sortBy: 'pair' });
   const [flashSignals, setFlashSignals] = useState({});
@@ -232,6 +244,8 @@ function FXRateGrid() {
       });
   }, [rates]);
 
+  const gridRefreshToken = isRatesStreaming ? lastUpdated : manualGridRefreshVersion;
+
   useEffect(() => {
     let isMounted = true;
     let loadTimer;
@@ -270,7 +284,7 @@ function FXRateGrid() {
       isMounted = false;
       window.clearTimeout(loadTimer);
     };
-  }, [maxVisibleRates, lastUpdated]);
+  }, [gridRefreshToken, maxVisibleRates]);
 
   const visibleRates = gridRequestFailed ? fallbackRates.slice(0, maxVisibleRates) : serverRates;
 
@@ -655,15 +669,57 @@ function FXRateGrid() {
     qty,
   });
 
+  const handleRatesModeToggle = async (event) => {
+    const nextStreamingState = event.target.checked;
+    setRatesStreaming(nextStreamingState);
+
+    if (!nextStreamingState) {
+      setLimitOrderFeedback({ severity: 'info', message: 'Manual RFQ mode enabled. Rates will stay fixed until you refresh them.' });
+      return;
+    }
+
+    setLimitOrderFeedback({ severity: 'info', message: 'Live streaming enabled for the rates screen.' });
+    await refresh?.({ forceRates: true });
+  };
+
+  const handleManualRatesRefresh = async () => {
+    await refresh?.({ forceRates: true });
+    setManualGridRefreshVersion((currentValue) => currentValue + 1);
+  };
+
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2.25}>
       {error ? <Alert severity="warning">{error}</Alert> : null}
       {limitOrderFeedback ? <Alert severity={limitOrderFeedback.severity}>{limitOrderFeedback.message}</Alert> : null}
+
+      <Paper sx={{ p: 1.35 }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} sx={{ justifyContent: 'space-between', alignItems: { xs: 'flex-start', lg: 'center' } }}>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Manual RFQ controls
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+              Streaming is off by default so quotes stay fixed while you work an RFQ.
+            </Typography>
+          </Box>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}>
+            <FormControlLabel
+              control={<Switch checked={isRatesStreaming} onChange={handleRatesModeToggle} />}
+              label={isRatesStreaming ? 'Live streaming' : 'Manual RFQ'}
+              sx={{ mr: 0 }}
+            />
+            <Button size="small" variant="outlined" onClick={handleManualRatesRefresh} disabled={isLoading || isGridLoading}>
+              Refresh rates
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
 
       <Box
         sx={{
           display: 'grid',
-          gap: 1.5,
+          gap: 1.2,
           alignItems: 'start',
           gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.85fr) minmax(280px, 0.72fr)' },
         }}
@@ -671,7 +727,7 @@ function FXRateGrid() {
         <Box
           sx={{
             display: 'grid',
-            gap: 1.25,
+            gap: 1,
             gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
           }}
         >
@@ -687,9 +743,9 @@ function FXRateGrid() {
 
             return (
               <Card key={`${selection.ccyPair}-${selection.tenor}-${index}`} sx={{ borderRadius: 1 }}>
-                <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, '&:last-child': { pb: { xs: 1.5, md: 1.75 } } }}>
-                  <Stack spacing={1.5}>
-                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <CardContent sx={{ p: { xs: 1.15, md: 1.25 }, '&:last-child': { pb: { xs: 1.15, md: 1.25 } } }}>
+                  <Stack spacing={1.1}>
+                    <Stack direction="row" spacing={0.75} sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
                       <Stack direction="row" spacing={0.5} sx={{ width: '100%', flexWrap: 'wrap' }}>
                         <TextField
                           select
@@ -697,15 +753,15 @@ function FXRateGrid() {
                           value={selection.ccyPair}
                           onChange={(event) => handlePairChange(index, event.target.value)}
                           sx={{
-                            minWidth: 138,
+                            minWidth: 128,
                             flex: 1,
                             '& .MuiOutlinedInput-root': {
                               borderRadius: 0.45,
                               bgcolor: 'rgba(255,255,255,0.02)',
                             },
                             '& .MuiSelect-select': {
-                              py: 0.6,
-                              fontSize: '0.82rem',
+                              py: 0.45,
+                              fontSize: '0.78rem',
                               fontWeight: 700,
                               letterSpacing: '0.04em',
                             },
@@ -723,15 +779,15 @@ function FXRateGrid() {
                           value={selection.tenor}
                           onChange={(event) => handleTenorChange(index, event.target.value)}
                           sx={{
-                            width: 88,
+                            width: 78,
                             flexShrink: 0,
                             '& .MuiOutlinedInput-root': {
                               borderRadius: 0.45,
                               bgcolor: 'rgba(255,255,255,0.02)',
                             },
                             '& .MuiSelect-select': {
-                              py: 0.6,
-                              fontSize: '0.82rem',
+                              py: 0.45,
+                              fontSize: '0.76rem',
                               fontWeight: 700,
                               letterSpacing: '0.04em',
                               textAlign: 'center',
@@ -747,14 +803,14 @@ function FXRateGrid() {
                       </Stack>
                     </Stack>
 
-                    <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                    <Box sx={{ display: 'grid', gap: 0.8, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                       <Paper sx={getQuoteTileStyles('rgba(255, 107, 129, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
                         <RateDisplay value={rate.bid} accentColor="error.main" />
                         <Button
                           fullWidth
                           color="error"
                           variant="outlined"
-                              sx={{ mt: 1, minHeight: 34, fontWeight: 700, fontSize: '0.8rem', py: 0.45 }}
+                          sx={{ mt: 0.75, minHeight: 30, fontWeight: 700, fontSize: '0.74rem', py: 0.3 }}
                           onClick={() =>
                             navigate('/app/booking', {
                               state: buildBookingState(rate, 'Sell', selectedDealCurrency, valueDate, bookingQuantity),
@@ -770,8 +826,8 @@ function FXRateGrid() {
                         <Button
                           fullWidth
                           color="success"
-                          variant="contained"
-                              sx={{ mt: 1, minHeight: 34, fontWeight: 700, fontSize: '0.8rem', py: 0.45 }}
+                          variant="outlined"
+                          sx={{ mt: 0.75, minHeight: 30, fontWeight: 700, fontSize: '0.74rem', py: 0.3 }}
                           onClick={() =>
                             navigate('/app/booking', {
                               state: buildBookingState(rate, 'Buy', selectedDealCurrency, valueDate, bookingQuantity),
@@ -786,7 +842,7 @@ function FXRateGrid() {
                     <Paper
                       variant="outlined"
                       sx={{
-                        p: 0.75,
+                        p: 0.55,
                         borderRadius: 0.75,
                         borderColor: 'rgba(255,255,255,0.08)',
                         bgcolor: 'rgba(255,255,255,0.02)',
@@ -802,8 +858,8 @@ function FXRateGrid() {
                               display: 'flex',
                             alignItems: 'center',
                             gap: 0.25,
-                              px: 0.75,
-                              py: 0.35,
+                            px: 0.55,
+                            py: 0.2,
                             borderRadius: 0.6,
                             border: '1px solid rgba(255,255,255,0.08)',
                             bgcolor: 'rgba(255,255,255,0.02)',
@@ -830,7 +886,7 @@ function FXRateGrid() {
                               flex: '0 1 112px',
                               minWidth: 72,
                               fontWeight: 700,
-                              fontSize: '0.82rem',
+                              fontSize: '0.76rem',
                               fontVariantNumeric: 'tabular-nums',
                               '& input': {
                                 p: 0,
@@ -838,7 +894,7 @@ function FXRateGrid() {
                               },
                             }}
                           />
-                          <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em', fontSize: '0.76rem' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, letterSpacing: '0.02em', fontSize: '0.72rem' }}>
                             {selectedDealCurrency}
                           </Typography>
                           <Tooltip title={nextDealCurrency ? `Toggle dealt currency to ${nextDealCurrency}` : 'Only one currency available'}>
@@ -856,7 +912,7 @@ function FXRateGrid() {
                           </Tooltip>
                         </Box>
 
-                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto', fontSize: '0.76rem' }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, whiteSpace: 'nowrap', ml: 'auto', fontSize: '0.72rem' }}>
                           {valueDate}
                         </Typography>
                       </Stack>
@@ -865,13 +921,13 @@ function FXRateGrid() {
                     <Paper
                       variant="outlined"
                       sx={{
-                        p: 1,
+                        p: 0.8,
                         borderRadius: 0.75,
                         borderColor: 'rgba(255,255,255,0.08)',
                         bgcolor: 'rgba(255,255,255,0.02)',
                       }}
                     >
-                      <Stack spacing={1.1}>
+                      <Stack spacing={0.85}>
 
                         {isSpotCard ? (
                           <>
@@ -880,8 +936,8 @@ function FXRateGrid() {
                             <Box
                               sx={{
                                 display: 'grid',
-                                gap: 1,
-                                gridTemplateColumns: '84px minmax(0, 1fr)',
+                                gap: 0.8,
+                                gridTemplateColumns: '76px minmax(0, 1fr)',
                                 alignItems: 'start',
                               }}
                             >
@@ -896,14 +952,14 @@ function FXRateGrid() {
                                 }}
                                 sx={{
                                   '& .MuiInputBase-root': {
-                                    minHeight: 34,
+                                    minHeight: 30,
                                     bgcolor: 'rgba(255,255,255,0.035)',
                                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                                   },
                                   '& .MuiSelect-select': {
-                                    fontSize: '0.78rem',
+                                    fontSize: '0.72rem',
                                     fontWeight: 700,
-                                    py: 0.75,
+                                    py: 0.62,
                                   },
                                   '& .MuiOutlinedInput-root': {
                                     borderRadius: 1.2,
@@ -928,14 +984,14 @@ function FXRateGrid() {
                                 slotProps={{ htmlInput: { 'aria-label': `${selection.ccyPair} limit price` } }}
                                 sx={{
                                   '& .MuiInputBase-root': {
-                                    minHeight: 34,
+                                    minHeight: 30,
                                     bgcolor: 'rgba(255,255,255,0.035)',
                                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                                   },
                                   '& .MuiInputBase-input': {
-                                    fontSize: '0.8rem',
+                                    fontSize: '0.74rem',
                                     fontWeight: 700,
-                                    py: 0.85,
+                                    py: 0.72,
                                   },
                                   '& .MuiOutlinedInput-root': {
                                     borderRadius: 1.2,
@@ -950,7 +1006,7 @@ function FXRateGrid() {
                               />
                             </Box>
 
-                            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+                            <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
                               <TextField
                                 select
                                 size="small"
@@ -961,16 +1017,16 @@ function FXRateGrid() {
                                   htmlInput: { 'aria-label': `${selection.ccyPair} limit order tif` },
                                 }}
                                 sx={{
-                                  width: 82,
+                                  width: 74,
                                   '& .MuiInputBase-root': {
-                                    minHeight: 34,
+                                    minHeight: 30,
                                     bgcolor: 'rgba(255,255,255,0.035)',
                                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                                   },
                                   '& .MuiSelect-select': {
-                                    fontSize: '0.78rem',
+                                    fontSize: '0.72rem',
                                     fontWeight: 700,
-                                    py: 0.75,
+                                    py: 0.62,
                                   },
                                   '& .MuiOutlinedInput-root': {
                                     borderRadius: 1.2,
@@ -1001,7 +1057,7 @@ function FXRateGrid() {
                                   })
                                 }
                                 disabled={submittingLimitIndex === index}
-                                sx={{ minHeight: 34, fontSize: '0.78rem', px: 1.2 }}
+                                sx={{ minHeight: 30, fontSize: '0.72rem', px: 1 }}
                               >
                                 {submittingLimitIndex === index ? 'Submitting…' : 'Submit limit order'}
                               </Button>
