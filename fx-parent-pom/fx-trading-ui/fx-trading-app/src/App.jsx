@@ -3,7 +3,6 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import Login from './fxapp/Login';
 import FXTradingApp from './fxapp/FXTradingApp';
-import DashboardHome from './fxapp/DashboardHome';
 import FXRateGrid from './fxapp/FXRateGrid';
 import FXLimitOrders from './fxapp/FXLimitOrders';
 import FXTradeBooking from './fxapp/FXTradeBooking';
@@ -30,7 +29,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<DashboardHome />} />
+          <Route index element={<Navigate to="rates" replace />} />
           <Route path="rates" element={<FXRateGrid />} />
           <Route path="limit-orders" element={<FXLimitOrders />} />
           <Route path="booking" element={<FXTradeBooking />} />

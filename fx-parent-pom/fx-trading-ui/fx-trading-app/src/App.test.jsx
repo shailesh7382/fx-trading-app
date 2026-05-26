@@ -15,6 +15,6 @@ test('can enter the workspace through demo mode', async () => {
 
   await user.click(screen.getByRole('button', { name: /continue in demo mode/i }));
 
-  expect(await screen.findByText(/overview for/i)).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: /rates/i })).toBeInTheDocument();
 });
 

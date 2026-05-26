@@ -20,7 +20,6 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import CandlestickChartRoundedIcon from '@mui/icons-material/CandlestickChartRounded';
 import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded';
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
@@ -39,7 +38,6 @@ import { formatDateTime, formatRelativeTime } from '../utils/formatters';
 const drawerWidth = 292;
 
 const navigationItems = [
-  { label: 'Dashboard', path: '/app', icon: <DashboardRoundedIcon /> },
   { label: 'Rates', path: '/app/rates', icon: <CandlestickChartRoundedIcon /> },
   { label: 'Limit orders', path: '/app/limit-orders', icon: <PendingActionsRoundedIcon /> },
   { label: 'Booking', path: '/app/booking', icon: <AddCardRoundedIcon /> },
@@ -49,10 +47,6 @@ const navigationItems = [
 ];
 
 const pageTitles = {
-  '/app': {
-    title: 'Overview',
-    subtitle: 'Monitor market activity and open the required trading workflow.',
-  },
   '/app/rates': {
     title: 'Rates',
     subtitle: 'Review current prices, spreads, and available size.',
@@ -88,7 +82,7 @@ function FXTradingApp() {
   const workspaceData = useWorkspaceData();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const pageMeta = pageTitles[location.pathname] || pageTitles['/app'];
+  const pageMeta = pageTitles[location.pathname] || pageTitles['/app/rates'];
   const livePairs = workspaceData.rates.length;
   const deskChips = useMemo(
     () => [
@@ -143,7 +137,7 @@ function FXTradingApp() {
 
       <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
         {navigationItems.map((item) => {
-          const selected = item.path === '/app' ? location.pathname === '/app' : location.pathname.startsWith(item.path);
+          const selected = location.pathname.startsWith(item.path);
 
           return (
             <ListItemButton
@@ -269,7 +263,7 @@ function FXTradingApp() {
         >
           <BottomNavigation
             showLabels
-            value={navigationItems.find((item) => (item.path === '/app' ? location.pathname === '/app' : location.pathname.startsWith(item.path)))?.path || '/app'}
+            value={navigationItems.find((item) => location.pathname.startsWith(item.path))?.path || '/app/rates'}
             onChange={(_, nextValue) => navigate(nextValue)}
             sx={{ bgcolor: 'transparent' }}
           >
