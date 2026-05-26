@@ -17,3 +17,4 @@
 /fx-parent-pom/fx-trading-ui/fx-trading-app/dist/
 /.runtime/
 /logs/
+/fx-parent-pom/fx-trading-ui/target/

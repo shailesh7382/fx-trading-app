@@ -122,10 +122,11 @@ public class FxPriceDTO {
     private static int getTenorOrder(String tenor) {
         switch (tenor) {
             case "SP": return 0;
-            case "1M": return 1;
-            case "3M": return 2;
-            case "6M": return 3;
-            case "1Y": return 4;
+            case "1W": return 1;
+            case "1M": return 2;
+            case "6M": return 4;
+            case "1Y": return 5;
+            case "3M": return 3;
             default: return Integer.MAX_VALUE;
         }
     }

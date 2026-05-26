@@ -4,6 +4,7 @@ public enum Tenor {
     SP, 
     W1("1W"), 
     M1("1M"), 
+    M6("6M"),
     Y1("1Y");
 
     private final String label;

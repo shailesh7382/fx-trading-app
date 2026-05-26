@@ -86,12 +86,31 @@ public class FxPriceService implements MarketDataUpdateListener {
                         .thenComparing(FxPrice::getCcyPair);
             default:
                 return Comparator.comparing(FxPrice::getCcyPair)
-                        .thenComparing(FxPrice::getTenorLabel);
+                        .thenComparingInt(fxPrice -> getTenorOrder(fxPrice.getTenorLabel()));
         }
     }
 
     private double getSpread(FxPrice fxPrice) {
         return Math.abs(fxPrice.getAsk() - fxPrice.getBid());
+    }
+
+    private int getTenorOrder(String tenor) {
+        switch (tenor) {
+            case "SP":
+                return 0;
+            case "1W":
+                return 1;
+            case "1M":
+                return 2;
+            case "6M":
+                return 3;
+            case "1Y":
+                return 4;
+            case "3M":
+                return 5;
+            default:
+                return Integer.MAX_VALUE;
+        }
     }
 
     public FxPrice updatePrice(FxPrice fxPrice) {

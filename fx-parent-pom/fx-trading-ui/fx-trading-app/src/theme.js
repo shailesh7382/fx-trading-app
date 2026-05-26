@@ -4,8 +4,8 @@ const appTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#4ef2c2',
-      contrastText: '#04111f',
+      main: '#005EB8',
+      contrastText: '#f5f7fb',
     },
     secondary: {
       main: '#6ea8ff',
@@ -57,7 +57,7 @@ const appTheme = createTheme({
       styleOverrides: {
         body: {
           background:
-            'radial-gradient(circle at top, rgba(78, 242, 194, 0.14), transparent 28%), linear-gradient(180deg, #07111f 0%, #040913 100%)',
+            'radial-gradient(circle at top, rgba(0, 94, 184, 0.22), transparent 28%), linear-gradient(180deg, #07111f 0%, #040913 100%)',
         },
       },
     },
