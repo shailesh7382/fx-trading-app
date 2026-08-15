@@ -1,284 +1,226 @@
 package com.example.util;
 
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
 /**
- * Derives an executable bid/ask for a currency pair from two USD-legged pairs.
+ * Derives an executable bid/ask for a target pair from two USD-legged pairs.
  *
- * <p>For a high-frequency price stream, call {@link #compile(String, String, String)} once
- * per instrument and reuse the returned immutable route. The compiled API performs no
- * allocation on a successful call when the caller supplies a reusable result array.
- * Quote snapshot consistency and staleness checks remain the caller's responsibility.</p>
+ * <p>The enum API is the production path. Pair structure is already resolved by {@link CcyPair},
+ * so calculator lookup uses only enum ordinals and array access. The string overloads are adapters
+ * for uppercase symbols and deliberately perform no case normalization.</p>
  */
 public final class CcyPairCrosser {
 
-    private static final int USD = ('U' << 16) | ('S' << 8) | 'D';
+    private static final int PAIR_TYPE_COUNT = CcyPair.values().length;
 
-    private static final byte COPY_PAIR_1 = 0;
-    private static final byte INVERT_PAIR_1 = 1;
-    private static final byte COPY_PAIR_2 = 2;
-    private static final byte INVERT_PAIR_2 = 3;
-    private static final byte PAIR_1_OVER_PAIR_2 = 4;
-    private static final byte PAIR_1_TIMES_PAIR_2 = 5;
-    private static final byte ONE_OVER_PAIR_1_PAIR_2 = 6;
-    private static final byte PAIR_2_OVER_PAIR_1 = 7;
-
-    private static final byte USD_SOURCE = 0;
-    private static final byte PAIR_1_DIRECT = 1;
-    private static final byte PAIR_1_INVERTED = 2;
-    private static final byte PAIR_2_DIRECT = 3;
-    private static final byte PAIR_2_INVERTED = 4;
+    /*
+     * Every ordered enum triple has one collision-free slot. This replaces hashing, primitive
+     * symbol packing, linear probing, and a fixed capacity limit from the previous cache.
+     */
+    private static final AtomicReferenceArray<CrossRateCalculator> CALCULATOR_CACHE =
+            new AtomicReferenceArray<>(PAIR_TYPE_COUNT * PAIR_TYPE_COUNT * PAIR_TYPE_COUNT);
 
     private CcyPairCrosser() {
     }
 
     /**
-     * Compatibility API for one-off calculations. Streaming callers should cache a
-     * {@link CompiledCross} instead of parsing the pair symbols on every tick.
-     *
-     * @return a newly allocated {@code {bid, ask}} array
+     * One-off enum API. It reuses the cached calculator but allocates the returned array.
      */
-    public static double[] crossRate(String pair1, double pair1Bid, double pair1Ask,
-                                     String pair2, double pair2Bid, double pair2Ask,
-                                     String crossPair) {
-        return compile(pair1, pair2, crossPair)
-                .crossRate(pair1Bid, pair1Ask, pair2Bid, pair2Ask);
+    public static double[] crossRate(CcyPair firstUsdPair,
+                                     double firstPairBid,
+                                     double firstPairAsk,
+                                     CcyPair secondUsdPair,
+                                     double secondPairBid,
+                                     double secondPairAsk,
+                                     CcyPair targetPair) {
+        return calculatorFor(firstUsdPair, secondUsdPair, targetPair)
+                .crossRate(firstPairBid, firstPairAsk, secondPairBid, secondPairAsk);
     }
 
     /**
-     * Parses and validates the instrument topology once, outside the pricing hot path.
-     * Input pairs must contain exactly one USD leg and must represent distinct non-USD
-     * currencies. Pair symbols are ASCII case-insensitive.
+     * Compatibility adapter for exact uppercase pair names.
+     *
+     * <p>No uppercase conversion or case-insensitive fallback is performed. Unknown or lowercase
+     * symbols fail through {@link CcyPair#valueOf(String)}.</p>
      */
-    public static CompiledCross compile(String pair1, String pair2, String crossPair) {
-        long encodedPair1 = encodeUsdPair(pair1, "pair1");
-        long encodedPair2 = encodeUsdPair(pair2, "pair2");
-        long encodedCross = encodeCrossPair(crossPair);
+    public static double[] crossRate(String firstUsdPair,
+                                     double firstPairBid,
+                                     double firstPairAsk,
+                                     String secondUsdPair,
+                                     double secondPairBid,
+                                     double secondPairAsk,
+                                     String targetPair) {
+        return crossRate(
+                CcyPair.valueOf(firstUsdPair), firstPairBid, firstPairAsk,
+                CcyPair.valueOf(secondUsdPair), secondPairBid, secondPairAsk,
+                CcyPair.valueOf(targetPair));
+    }
 
-        int pair1Base = baseOf(encodedPair1);
-        int pair1Quote = quoteOf(encodedPair1);
-        int pair2Base = baseOf(encodedPair2);
-        int pair2Quote = quoteOf(encodedPair2);
-        int pair1Currency = pair1Base == USD ? pair1Quote : pair1Base;
-        int pair2Currency = pair2Base == USD ? pair2Quote : pair2Base;
+    /**
+     * Returns the shared immutable calculator for an ordered enum combination.
+     *
+     * <p>The cache index is calculated directly from the three enum ordinals. A hit requires no
+     * hash, collision probe, temporary key, symbol parsing, or allocation. On the first lookup,
+     * topology is validated and the formula retained by the target-pair enum is selected.</p>
+     */
+    public static CrossRateCalculator calculatorFor(CcyPair firstUsdPair,
+                                                    CcyPair secondUsdPair,
+                                                    CcyPair targetPair) {
+        Objects.requireNonNull(firstUsdPair, "firstUsdPair");
+        Objects.requireNonNull(secondUsdPair, "secondUsdPair");
+        Objects.requireNonNull(targetPair, "targetPair");
 
-        if (pair1Currency == pair2Currency) {
-            throw new IllegalArgumentException("Input pairs must have distinct non-USD currencies: "
-                    + pair1 + ", " + pair2);
+        int cacheIndex = cacheIndex(firstUsdPair, secondUsdPair, targetPair);
+        CrossRateCalculator cached = CALCULATOR_CACHE.get(cacheIndex);
+        if (cached != null) {
+            return cached;
         }
 
-        byte baseSource = findSource(baseOf(encodedCross), pair1Base, pair1Quote, pair2Base, pair2Quote);
-        byte quoteSource = findSource(quoteOf(encodedCross), pair1Base, pair1Quote, pair2Base, pair2Quote);
-        return new CompiledCross(resolveOperation(baseSource, quoteSource));
+        CrossRateCalculator candidate = createCalculator(firstUsdPair, secondUsdPair, targetPair);
+        if (CALCULATOR_CACHE.compareAndSet(cacheIndex, null, candidate)) {
+            return candidate;
+        }
+        return CALCULATOR_CACHE.get(cacheIndex);
     }
 
     /**
-     * Immutable, thread-safe calculation route. The object contains no mutable quote state.
+     * Compatibility adapter for exact uppercase pair names. Prefer the enum overload when pair
+     * identity is already known by the caller.
      */
-    public static final class CompiledCross {
+    public static CrossRateCalculator calculatorFor(String firstUsdPair,
+                                                    String secondUsdPair,
+                                                    String targetPair) {
+        return calculatorFor(
+                CcyPair.valueOf(firstUsdPair),
+                CcyPair.valueOf(secondUsdPair),
+                CcyPair.valueOf(targetPair));
+    }
 
-        private final byte operation;
+    private static int cacheIndex(CcyPair firstUsdPair,
+                                  CcyPair secondUsdPair,
+                                  CcyPair targetPair) {
+        return (firstUsdPair.ordinal() * PAIR_TYPE_COUNT + secondUsdPair.ordinal())
+                * PAIR_TYPE_COUNT + targetPair.ordinal();
+    }
 
-        private CompiledCross(byte operation) {
-            this.operation = operation;
+    private static CrossRateCalculator createCalculator(CcyPair firstUsdPair,
+                                                        CcyPair secondUsdPair,
+                                                        CcyPair targetPair) {
+        requireUsdLeg(firstUsdPair, "firstUsdPair");
+        requireUsdLeg(secondUsdPair, "secondUsdPair");
+        Ccy firstCcy = firstUsdPair.nonUsdCcy();
+        Ccy secondCcy = secondUsdPair.nonUsdCcy();
+        if (firstCcy == secondCcy) {
+            throw new IllegalArgumentException(
+                    "Input pairs must have distinct non-USD currencies: "
+                            + firstUsdPair + ", " + secondUsdPair);
+        }
+
+        requireAvailableCurrency(targetPair.base(), firstCcy, secondCcy);
+        requireAvailableCurrency(targetPair.quote(), firstCcy, secondCcy);
+
+        if (targetPair.isUsdLeg()) {
+            if (targetPair == firstUsdPair) {
+                return new CrossRateCalculator(CcyPair.CrossRateFormula.COPY_FIRST_PAIR);
+            }
+            if (targetPair == secondUsdPair) {
+                return new CrossRateCalculator(CcyPair.CrossRateFormula.COPY_SECOND_PAIR);
+            }
+            throw new AssertionError("Canonical USD target did not match either input pair");
+        }
+
+        CcyPair.CrossRateFormula formula = targetPair.crossRateFormula();
+        if (targetPair.base() == firstCcy) {
+            return new CrossRateCalculator(formula);
+        }
+        return new CrossRateCalculator(formula.withSwappedInputs());
+    }
+
+    private static void requireUsdLeg(CcyPair pair, String argumentName) {
+        if (!pair.isUsdLeg()) {
+            throw new IllegalArgumentException(argumentName + " must be a USD leg: " + pair);
+        }
+    }
+
+    private static void requireAvailableCurrency(Ccy ccy, Ccy firstCcy, Ccy secondCcy) {
+        if (ccy != Ccy.USD && ccy != firstCcy && ccy != secondCcy) {
+            throw new IllegalArgumentException("No input pair contains currency " + ccy);
+        }
+    }
+
+    /**
+     * Immutable, thread-safe executable formula for one ordered pair combination.
+     */
+    public static final class CrossRateCalculator {
+
+        private final CcyPair.CrossRateFormula formula;
+
+        private CrossRateCalculator(CcyPair.CrossRateFormula formula) {
+            this.formula = formula;
         }
 
         /**
          * Validates both input quotes and returns a newly allocated {@code {bid, ask}} array.
          */
-        public double[] crossRate(double pair1Bid, double pair1Ask,
-                                  double pair2Bid, double pair2Ask) {
+        public double[] crossRate(double firstPairBid, double firstPairAsk,
+                                  double secondPairBid, double secondPairAsk) {
             double[] result = new double[2];
-            crossRate(pair1Bid, pair1Ask, pair2Bid, pair2Ask, result);
+            crossRate(firstPairBid, firstPairAsk, secondPairBid, secondPairAsk, result);
             return result;
         }
 
         /**
-         * Validates both input quotes and writes into a caller-owned array of length at least two.
-         * This method does not allocate on successful calls.
+         * Validates both input quotes and writes into caller-owned storage without allocation.
          */
-        public void crossRate(double pair1Bid, double pair1Ask,
-                              double pair2Bid, double pair2Ask,
+        public void crossRate(double firstPairBid, double firstPairAsk,
+                              double secondPairBid, double secondPairAsk,
                               double[] result) {
             validateDestination(result);
-            validateQuote(pair1Bid, pair1Ask, "pair1");
-            validateQuote(pair2Bid, pair2Ask, "pair2");
-            calculate(pair1Bid, pair1Ask, pair2Bid, pair2Ask, result, true);
+            validateQuote(firstPairBid, firstPairAsk, "first pair");
+            validateQuote(secondPairBid, secondPairAsk, "second pair");
+            calculate(firstPairBid, firstPairAsk, secondPairBid, secondPairAsk, result, true);
         }
 
         /**
-         * Allocation-free calculation for feeds that already guarantee finite, positive,
-         * non-crossed quotes. Invalid inputs produce undefined output. The result array must
-         * have length at least two and must not be shared concurrently by callers.
+         * Fast path for already validated quotes and a result array of length at least two.
          */
-        public void crossRateUnchecked(double pair1Bid, double pair1Ask,
-                                       double pair2Bid, double pair2Ask,
+        public void crossRateUnchecked(double firstPairBid, double firstPairAsk,
+                                       double secondPairBid, double secondPairAsk,
                                        double[] result) {
-            calculate(pair1Bid, pair1Ask, pair2Bid, pair2Ask, result, false);
+            calculate(firstPairBid, firstPairAsk, secondPairBid, secondPairAsk, result, false);
         }
 
-        private void calculate(double pair1Bid, double pair1Ask,
-                               double pair2Bid, double pair2Ask,
+        private void calculate(double firstPairBid, double firstPairAsk,
+                               double secondPairBid, double secondPairAsk,
                                double[] result, boolean validateResult) {
-            switch (operation) {
-                case COPY_PAIR_1:
-                    writeResult(result, pair1Bid, pair1Ask, validateResult);
+            switch (formula) {
+                case COPY_FIRST_PAIR:
+                    writeResult(result, firstPairBid, firstPairAsk, validateResult);
                     return;
-                case INVERT_PAIR_1:
-                    writeResult(result, 1.0d / pair1Ask, 1.0d / pair1Bid, validateResult);
+                case COPY_SECOND_PAIR:
+                    writeResult(result, secondPairBid, secondPairAsk, validateResult);
                     return;
-                case COPY_PAIR_2:
-                    writeResult(result, pair2Bid, pair2Ask, validateResult);
+                case DIVIDE_FIRST_BY_SECOND:
+                    writeResult(result, firstPairBid / secondPairAsk,
+                            firstPairAsk / secondPairBid, validateResult);
                     return;
-                case INVERT_PAIR_2:
-                    writeResult(result, 1.0d / pair2Ask, 1.0d / pair2Bid, validateResult);
+                case MULTIPLY_FIRST_AND_SECOND:
+                    writeResult(result, firstPairBid * secondPairBid,
+                            firstPairAsk * secondPairAsk, validateResult);
                     return;
-                case PAIR_1_OVER_PAIR_2:
-                    writeResult(result, pair1Bid / pair2Ask, pair1Ask / pair2Bid, validateResult);
+                case RECIPROCAL_OF_PAIR_PRODUCT:
+                    writeResult(result, 1.0d / (firstPairAsk * secondPairAsk),
+                            1.0d / (firstPairBid * secondPairBid), validateResult);
                     return;
-                case PAIR_1_TIMES_PAIR_2:
-                    writeResult(result, pair1Bid * pair2Bid, pair1Ask * pair2Ask, validateResult);
-                    return;
-                case ONE_OVER_PAIR_1_PAIR_2:
-                    writeResult(result, 1.0d / (pair1Ask * pair2Ask),
-                            1.0d / (pair1Bid * pair2Bid), validateResult);
-                    return;
-                case PAIR_2_OVER_PAIR_1:
-                    writeResult(result, pair2Bid / pair1Ask, pair2Ask / pair1Bid, validateResult);
+                case DIVIDE_SECOND_BY_FIRST:
+                    writeResult(result, secondPairBid / firstPairAsk,
+                            secondPairAsk / firstPairBid, validateResult);
                     return;
                 default:
-                    throw new AssertionError("Unknown cross-rate operation: " + operation);
+                    throw new AssertionError("Unknown cross-rate formula: " + formula);
             }
         }
-    }
-
-    private static long encodeUsdPair(String pair, String argumentName) {
-        long encoded = encodePair(pair, argumentName);
-        int base = baseOf(encoded);
-        int quote = quoteOf(encoded);
-        if ((base == USD) == (quote == USD)) {
-            throw new IllegalArgumentException(argumentName
-                    + " must contain exactly one USD leg: " + pair);
-        }
-        return encoded;
-    }
-
-    private static long encodeCrossPair(String pair) {
-        long encoded = encodePair(pair, "crossPair");
-        if (baseOf(encoded) == quoteOf(encoded)) {
-            throw new IllegalArgumentException("Cross pair base and quote must differ: " + pair);
-        }
-        return encoded;
-    }
-
-    private static long encodePair(String pair, String argumentName) {
-        if (pair == null || pair.length() != 6) {
-            throw new IllegalArgumentException(argumentName
-                    + " must be a six-letter currency pair, e.g. EURUSD: " + pair);
-        }
-        int base = encodeCurrency(pair, 0, argumentName);
-        int quote = encodeCurrency(pair, 3, argumentName);
-        return ((long) base << 32) | (quote & 0xffffffffL);
-    }
-
-    private static int encodeCurrency(String pair, int offset, String argumentName) {
-        int encoded = 0;
-        for (int index = offset; index < offset + 3; index++) {
-            char character = pair.charAt(index);
-            if (character >= 'a' && character <= 'z') {
-                character = (char) (character - ('a' - 'A'));
-            }
-            if (character < 'A' || character > 'Z') {
-                throw new IllegalArgumentException(argumentName
-                        + " must contain ASCII letters only: " + pair);
-            }
-            encoded = (encoded << 8) | character;
-        }
-        return encoded;
-    }
-
-    private static int baseOf(long encodedPair) {
-        return (int) (encodedPair >>> 32);
-    }
-
-    private static int quoteOf(long encodedPair) {
-        return (int) encodedPair;
-    }
-
-    private static byte findSource(int currency,
-                                   int pair1Base, int pair1Quote,
-                                   int pair2Base, int pair2Quote) {
-        if (currency == USD) {
-            return USD_SOURCE;
-        }
-        if (currency == pair1Base) {
-            return PAIR_1_DIRECT;
-        }
-        if (currency == pair1Quote) {
-            return PAIR_1_INVERTED;
-        }
-        if (currency == pair2Base) {
-            return PAIR_2_DIRECT;
-        }
-        if (currency == pair2Quote) {
-            return PAIR_2_INVERTED;
-        }
-        throw new IllegalArgumentException("No input pair contains currency " + decodeCurrency(currency));
-    }
-
-    private static byte resolveOperation(byte baseSource, byte quoteSource) {
-        if (baseSource == USD_SOURCE) {
-            switch (quoteSource) {
-                case PAIR_1_DIRECT:
-                    return INVERT_PAIR_1;
-                case PAIR_1_INVERTED:
-                    return COPY_PAIR_1;
-                case PAIR_2_DIRECT:
-                    return INVERT_PAIR_2;
-                case PAIR_2_INVERTED:
-                    return COPY_PAIR_2;
-                default:
-                    throw new AssertionError("Invalid USD-base route");
-            }
-        }
-        if (quoteSource == USD_SOURCE) {
-            switch (baseSource) {
-                case PAIR_1_DIRECT:
-                    return COPY_PAIR_1;
-                case PAIR_1_INVERTED:
-                    return INVERT_PAIR_1;
-                case PAIR_2_DIRECT:
-                    return COPY_PAIR_2;
-                case PAIR_2_INVERTED:
-                    return INVERT_PAIR_2;
-                default:
-                    throw new AssertionError("Invalid USD-quote route");
-            }
-        }
-
-        if (baseSource == PAIR_1_DIRECT && quoteSource == PAIR_2_DIRECT) {
-            return PAIR_1_OVER_PAIR_2;
-        }
-        if (baseSource == PAIR_1_DIRECT && quoteSource == PAIR_2_INVERTED) {
-            return PAIR_1_TIMES_PAIR_2;
-        }
-        if (baseSource == PAIR_1_INVERTED && quoteSource == PAIR_2_DIRECT) {
-            return ONE_OVER_PAIR_1_PAIR_2;
-        }
-        if (baseSource == PAIR_1_INVERTED && quoteSource == PAIR_2_INVERTED) {
-            return PAIR_2_OVER_PAIR_1;
-        }
-        if (baseSource == PAIR_2_DIRECT && quoteSource == PAIR_1_DIRECT) {
-            return PAIR_2_OVER_PAIR_1;
-        }
-        if (baseSource == PAIR_2_DIRECT && quoteSource == PAIR_1_INVERTED) {
-            return PAIR_1_TIMES_PAIR_2;
-        }
-        if (baseSource == PAIR_2_INVERTED && quoteSource == PAIR_1_DIRECT) {
-            return ONE_OVER_PAIR_1_PAIR_2;
-        }
-        if (baseSource == PAIR_2_INVERTED && quoteSource == PAIR_1_INVERTED) {
-            return PAIR_1_OVER_PAIR_2;
-        }
-        throw new AssertionError("Input currencies do not form a valid cross route");
     }
 
     private static void validateDestination(double[] result) {
@@ -307,13 +249,5 @@ public final class CcyPairCrosser {
         }
         result[0] = bid;
         result[1] = ask;
-    }
-
-    private static String decodeCurrency(int currency) {
-        return new String(new char[]{
-                (char) ((currency >>> 16) & 0xff),
-                (char) ((currency >>> 8) & 0xff),
-                (char) (currency & 0xff)
-        });
     }
 }
