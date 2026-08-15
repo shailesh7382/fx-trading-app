@@ -1,179 +1,319 @@
 package com.example.util;
 
 /**
- * Derives the bid/ask of a cross currency pair from two USD-legged pairs.
- * e.g. EURUSD + USDJPY -> EURJPY, or USDJPY + USDCHF -> JPYCHF.
+ * Derives an executable bid/ask for a currency pair from two USD-legged pairs.
+ *
+ * <p>For a high-frequency price stream, call {@link #compile(String, String, String)} once
+ * per instrument and reuse the returned immutable route. The compiled API performs no
+ * allocation on a successful call when the caller supplies a reusable result array.
+ * Quote snapshot consistency and staleness checks remain the caller's responsibility.</p>
  */
-public class CcyPairCrosser {
+public final class CcyPairCrosser {
 
-    private static final String USD = "USD";
+    private static final int USD = ('U' << 16) | ('S' << 8) | 'D';
+
+    private static final byte COPY_PAIR_1 = 0;
+    private static final byte INVERT_PAIR_1 = 1;
+    private static final byte COPY_PAIR_2 = 2;
+    private static final byte INVERT_PAIR_2 = 3;
+    private static final byte PAIR_1_OVER_PAIR_2 = 4;
+    private static final byte PAIR_1_TIMES_PAIR_2 = 5;
+    private static final byte ONE_OVER_PAIR_1_PAIR_2 = 6;
+    private static final byte PAIR_2_OVER_PAIR_1 = 7;
+
+    private static final byte USD_SOURCE = 0;
+    private static final byte PAIR_1_DIRECT = 1;
+    private static final byte PAIR_1_INVERTED = 2;
+    private static final byte PAIR_2_DIRECT = 3;
+    private static final byte PAIR_2_INVERTED = 4;
+
+    private CcyPairCrosser() {
+    }
 
     /**
-     * @param pair1     first USD-legged pair, e.g. EURUSD
-     * @param pair1Bid  bid of pair1
-     * @param pair1Ask  ask of pair1
-     * @param pair2     second USD-legged pair, e.g. USDJPY
-     * @param pair2Bid  bid of pair2
-     * @param pair2Ask  ask of pair2
-     * @param crossPair the cross pair to derive, e.g. EURJPY
-     * @return {bid, ask} of crossPair
+     * Compatibility API for one-off calculations. Streaming callers should cache a
+     * {@link CompiledCross} instead of parsing the pair symbols on every tick.
+     *
+     * @return a newly allocated {@code {bid, ask}} array
      */
     public static double[] crossRate(String pair1, double pair1Bid, double pair1Ask,
-                                      String pair2, double pair2Bid, double pair2Ask,
-                                      String crossPair) {
-        validatePair(pair1);
-        validatePair(pair2);
-        validateQuote(pair1Bid, pair1Ask);
-        validateQuote(pair2Bid, pair2Ask);
-        requireUsdLeg(pair1);
-        requireUsdLeg(pair2);
-
-        if (crossPair == null || crossPair.length() != 6) {
-            throw new IllegalArgumentException("Cross ccy pair must be 6 characters, e.g. EURJPY: " + crossPair);
-        }
-        crossPair = crossPair.toUpperCase();
-        String base = crossPair.substring(0, 3);
-        String quote = crossPair.substring(3, 6);
-        if (base.equals(quote)) {
-            throw new IllegalArgumentException("Base and quote currency cannot be the same: " + crossPair);
-        }
-
-        if (base.equals(USD) || quote.equals(USD)) {
-            return resolveDirectPair(pair1, pair1Bid, pair1Ask, pair2, pair2Bid, pair2Ask, crossPair, base, quote);
-        }
-
-        double[] baseVsUsd = ccyPerUsd(pair1, pair1Bid, pair1Ask, pair2, pair2Bid, pair2Ask, base);
-        double[] quoteVsUsd = ccyPerUsd(pair1, pair1Bid, pair1Ask, pair2, pair2Bid, pair2Ask, quote);
-
-        double crossBid = baseVsUsd[0] / quoteVsUsd[1];
-        double crossAsk = baseVsUsd[1] / quoteVsUsd[0];
-
-        return new double[]{crossBid, crossAsk};
+                                     String pair2, double pair2Bid, double pair2Ask,
+                                     String crossPair) {
+        return compile(pair1, pair2, crossPair)
+                .crossRate(pair1Bid, pair1Ask, pair2Bid, pair2Ask);
     }
 
-    private static void validatePair(String pair) {
+    /**
+     * Parses and validates the instrument topology once, outside the pricing hot path.
+     * Input pairs must contain exactly one USD leg and must represent distinct non-USD
+     * currencies. Pair symbols are ASCII case-insensitive.
+     */
+    public static CompiledCross compile(String pair1, String pair2, String crossPair) {
+        long encodedPair1 = encodeUsdPair(pair1, "pair1");
+        long encodedPair2 = encodeUsdPair(pair2, "pair2");
+        long encodedCross = encodeCrossPair(crossPair);
+
+        int pair1Base = baseOf(encodedPair1);
+        int pair1Quote = quoteOf(encodedPair1);
+        int pair2Base = baseOf(encodedPair2);
+        int pair2Quote = quoteOf(encodedPair2);
+        int pair1Currency = pair1Base == USD ? pair1Quote : pair1Base;
+        int pair2Currency = pair2Base == USD ? pair2Quote : pair2Base;
+
+        if (pair1Currency == pair2Currency) {
+            throw new IllegalArgumentException("Input pairs must have distinct non-USD currencies: "
+                    + pair1 + ", " + pair2);
+        }
+
+        byte baseSource = findSource(baseOf(encodedCross), pair1Base, pair1Quote, pair2Base, pair2Quote);
+        byte quoteSource = findSource(quoteOf(encodedCross), pair1Base, pair1Quote, pair2Base, pair2Quote);
+        return new CompiledCross(resolveOperation(baseSource, quoteSource));
+    }
+
+    /**
+     * Immutable, thread-safe calculation route. The object contains no mutable quote state.
+     */
+    public static final class CompiledCross {
+
+        private final byte operation;
+
+        private CompiledCross(byte operation) {
+            this.operation = operation;
+        }
+
+        /**
+         * Validates both input quotes and returns a newly allocated {@code {bid, ask}} array.
+         */
+        public double[] crossRate(double pair1Bid, double pair1Ask,
+                                  double pair2Bid, double pair2Ask) {
+            double[] result = new double[2];
+            crossRate(pair1Bid, pair1Ask, pair2Bid, pair2Ask, result);
+            return result;
+        }
+
+        /**
+         * Validates both input quotes and writes into a caller-owned array of length at least two.
+         * This method does not allocate on successful calls.
+         */
+        public void crossRate(double pair1Bid, double pair1Ask,
+                              double pair2Bid, double pair2Ask,
+                              double[] result) {
+            validateDestination(result);
+            validateQuote(pair1Bid, pair1Ask, "pair1");
+            validateQuote(pair2Bid, pair2Ask, "pair2");
+            calculate(pair1Bid, pair1Ask, pair2Bid, pair2Ask, result, true);
+        }
+
+        /**
+         * Allocation-free calculation for feeds that already guarantee finite, positive,
+         * non-crossed quotes. Invalid inputs produce undefined output. The result array must
+         * have length at least two and must not be shared concurrently by callers.
+         */
+        public void crossRateUnchecked(double pair1Bid, double pair1Ask,
+                                       double pair2Bid, double pair2Ask,
+                                       double[] result) {
+            calculate(pair1Bid, pair1Ask, pair2Bid, pair2Ask, result, false);
+        }
+
+        private void calculate(double pair1Bid, double pair1Ask,
+                               double pair2Bid, double pair2Ask,
+                               double[] result, boolean validateResult) {
+            switch (operation) {
+                case COPY_PAIR_1:
+                    writeResult(result, pair1Bid, pair1Ask, validateResult);
+                    return;
+                case INVERT_PAIR_1:
+                    writeResult(result, 1.0d / pair1Ask, 1.0d / pair1Bid, validateResult);
+                    return;
+                case COPY_PAIR_2:
+                    writeResult(result, pair2Bid, pair2Ask, validateResult);
+                    return;
+                case INVERT_PAIR_2:
+                    writeResult(result, 1.0d / pair2Ask, 1.0d / pair2Bid, validateResult);
+                    return;
+                case PAIR_1_OVER_PAIR_2:
+                    writeResult(result, pair1Bid / pair2Ask, pair1Ask / pair2Bid, validateResult);
+                    return;
+                case PAIR_1_TIMES_PAIR_2:
+                    writeResult(result, pair1Bid * pair2Bid, pair1Ask * pair2Ask, validateResult);
+                    return;
+                case ONE_OVER_PAIR_1_PAIR_2:
+                    writeResult(result, 1.0d / (pair1Ask * pair2Ask),
+                            1.0d / (pair1Bid * pair2Bid), validateResult);
+                    return;
+                case PAIR_2_OVER_PAIR_1:
+                    writeResult(result, pair2Bid / pair1Ask, pair2Ask / pair1Bid, validateResult);
+                    return;
+                default:
+                    throw new AssertionError("Unknown cross-rate operation: " + operation);
+            }
+        }
+    }
+
+    private static long encodeUsdPair(String pair, String argumentName) {
+        long encoded = encodePair(pair, argumentName);
+        int base = baseOf(encoded);
+        int quote = quoteOf(encoded);
+        if ((base == USD) == (quote == USD)) {
+            throw new IllegalArgumentException(argumentName
+                    + " must contain exactly one USD leg: " + pair);
+        }
+        return encoded;
+    }
+
+    private static long encodeCrossPair(String pair) {
+        long encoded = encodePair(pair, "crossPair");
+        if (baseOf(encoded) == quoteOf(encoded)) {
+            throw new IllegalArgumentException("Cross pair base and quote must differ: " + pair);
+        }
+        return encoded;
+    }
+
+    private static long encodePair(String pair, String argumentName) {
         if (pair == null || pair.length() != 6) {
-            throw new IllegalArgumentException("Ccy pair must be 6 characters, e.g. EURUSD: " + pair);
+            throw new IllegalArgumentException(argumentName
+                    + " must be a six-letter currency pair, e.g. EURUSD: " + pair);
+        }
+        int base = encodeCurrency(pair, 0, argumentName);
+        int quote = encodeCurrency(pair, 3, argumentName);
+        return ((long) base << 32) | (quote & 0xffffffffL);
+    }
+
+    private static int encodeCurrency(String pair, int offset, String argumentName) {
+        int encoded = 0;
+        for (int index = offset; index < offset + 3; index++) {
+            char character = pair.charAt(index);
+            if (character >= 'a' && character <= 'z') {
+                character = (char) (character - ('a' - 'A'));
+            }
+            if (character < 'A' || character > 'Z') {
+                throw new IllegalArgumentException(argumentName
+                        + " must contain ASCII letters only: " + pair);
+            }
+            encoded = (encoded << 8) | character;
+        }
+        return encoded;
+    }
+
+    private static int baseOf(long encodedPair) {
+        return (int) (encodedPair >>> 32);
+    }
+
+    private static int quoteOf(long encodedPair) {
+        return (int) encodedPair;
+    }
+
+    private static byte findSource(int currency,
+                                   int pair1Base, int pair1Quote,
+                                   int pair2Base, int pair2Quote) {
+        if (currency == USD) {
+            return USD_SOURCE;
+        }
+        if (currency == pair1Base) {
+            return PAIR_1_DIRECT;
+        }
+        if (currency == pair1Quote) {
+            return PAIR_1_INVERTED;
+        }
+        if (currency == pair2Base) {
+            return PAIR_2_DIRECT;
+        }
+        if (currency == pair2Quote) {
+            return PAIR_2_INVERTED;
+        }
+        throw new IllegalArgumentException("No input pair contains currency " + decodeCurrency(currency));
+    }
+
+    private static byte resolveOperation(byte baseSource, byte quoteSource) {
+        if (baseSource == USD_SOURCE) {
+            switch (quoteSource) {
+                case PAIR_1_DIRECT:
+                    return INVERT_PAIR_1;
+                case PAIR_1_INVERTED:
+                    return COPY_PAIR_1;
+                case PAIR_2_DIRECT:
+                    return INVERT_PAIR_2;
+                case PAIR_2_INVERTED:
+                    return COPY_PAIR_2;
+                default:
+                    throw new AssertionError("Invalid USD-base route");
+            }
+        }
+        if (quoteSource == USD_SOURCE) {
+            switch (baseSource) {
+                case PAIR_1_DIRECT:
+                    return COPY_PAIR_1;
+                case PAIR_1_INVERTED:
+                    return INVERT_PAIR_1;
+                case PAIR_2_DIRECT:
+                    return COPY_PAIR_2;
+                case PAIR_2_INVERTED:
+                    return INVERT_PAIR_2;
+                default:
+                    throw new AssertionError("Invalid USD-quote route");
+            }
+        }
+
+        if (baseSource == PAIR_1_DIRECT && quoteSource == PAIR_2_DIRECT) {
+            return PAIR_1_OVER_PAIR_2;
+        }
+        if (baseSource == PAIR_1_DIRECT && quoteSource == PAIR_2_INVERTED) {
+            return PAIR_1_TIMES_PAIR_2;
+        }
+        if (baseSource == PAIR_1_INVERTED && quoteSource == PAIR_2_DIRECT) {
+            return ONE_OVER_PAIR_1_PAIR_2;
+        }
+        if (baseSource == PAIR_1_INVERTED && quoteSource == PAIR_2_INVERTED) {
+            return PAIR_2_OVER_PAIR_1;
+        }
+        if (baseSource == PAIR_2_DIRECT && quoteSource == PAIR_1_DIRECT) {
+            return PAIR_2_OVER_PAIR_1;
+        }
+        if (baseSource == PAIR_2_DIRECT && quoteSource == PAIR_1_INVERTED) {
+            return PAIR_1_TIMES_PAIR_2;
+        }
+        if (baseSource == PAIR_2_INVERTED && quoteSource == PAIR_1_DIRECT) {
+            return ONE_OVER_PAIR_1_PAIR_2;
+        }
+        if (baseSource == PAIR_2_INVERTED && quoteSource == PAIR_1_INVERTED) {
+            return PAIR_1_OVER_PAIR_2;
+        }
+        throw new AssertionError("Input currencies do not form a valid cross route");
+    }
+
+    private static void validateDestination(double[] result) {
+        if (result == null || result.length < 2) {
+            throw new IllegalArgumentException("Result array must have length at least two");
         }
     }
 
-    private static void validateQuote(double bid, double ask) {
-        if (bid <= 0 || ask <= 0) {
-            throw new IllegalArgumentException("Bid/ask must be positive: bid=" + bid + " ask=" + ask);
+    private static void validateQuote(double bid, double ask, String argumentName) {
+        if (!Double.isFinite(bid) || !Double.isFinite(ask) || bid <= 0.0d || ask <= 0.0d) {
+            throw new IllegalArgumentException(argumentName
+                    + " bid/ask must be finite and positive: bid=" + bid + " ask=" + ask);
         }
         if (bid > ask) {
-            throw new IllegalArgumentException("Bid cannot be greater than ask: bid=" + bid + " ask=" + ask);
+            throw new IllegalArgumentException(argumentName
+                    + " bid cannot exceed ask: bid=" + bid + " ask=" + ask);
         }
     }
 
-    private static void requireUsdLeg(String pair) {
-        String base = pair.substring(0, 3).toUpperCase();
-        String quote = pair.substring(3, 6).toUpperCase();
-        if (!base.equals(USD) && !quote.equals(USD)) {
-            throw new IllegalArgumentException("Not a USD pair: " + pair);
+    private static void writeResult(double[] result, double bid, double ask, boolean validateResult) {
+        if (validateResult
+                && (!Double.isFinite(bid) || !Double.isFinite(ask)
+                || bid <= 0.0d || ask <= 0.0d || bid > ask)) {
+            throw new IllegalArgumentException("Calculated cross bid/ask is invalid: bid="
+                    + bid + " ask=" + ask);
         }
+        result[0] = bid;
+        result[1] = ask;
     }
 
-    private static double[] resolveDirectPair(String pair1, double pair1Bid, double pair1Ask,
-                                               String pair2, double pair2Bid, double pair2Ask,
-                                               String crossPair, String base, String quote) {
-        String[] pairs = {pair1.toUpperCase(), pair2.toUpperCase()};
-        double[] bids = {pair1Bid, pair2Bid};
-        double[] asks = {pair1Ask, pair2Ask};
-
-        for (int i = 0; i < pairs.length; i++) {
-            String p = pairs[i];
-            if (p.equals(crossPair)) {
-                return new double[]{bids[i], asks[i]};
-            }
-            String pBase = p.substring(0, 3);
-            String pQuote = p.substring(3, 6);
-            if (pBase.equals(quote) && pQuote.equals(base)) {
-                return invert(bids[i], asks[i]);
-            }
-        }
-        throw new IllegalArgumentException("Neither input pair matches target " + crossPair);
-    }
-
-    /** Returns {bid, ask} of ccy expressed as ccy/USD (i.e. USD value of 1 unit of ccy), found in one of the two legs. */
-    private static double[] ccyPerUsd(String pair1, double pair1Bid, double pair1Ask,
-                                       String pair2, double pair2Bid, double pair2Ask,
-                                       String ccy) {
-        String[] pairs = {pair1.toUpperCase(), pair2.toUpperCase()};
-        double[] bids = {pair1Bid, pair2Bid};
-        double[] asks = {pair1Ask, pair2Ask};
-
-        for (int i = 0; i < pairs.length; i++) {
-            String base = pairs[i].substring(0, 3);
-            String quote = pairs[i].substring(3, 6);
-            if (base.equals(ccy)) {
-                // already CCY/USD
-                return new double[]{bids[i], asks[i]};
-            }
-            if (quote.equals(ccy)) {
-                // USD/CCY -> invert to CCY/USD
-                return invert(bids[i], asks[i]);
-            }
-        }
-        throw new IllegalArgumentException("No input pair contains currency " + ccy);
-    }
-
-    private static double[] invert(double bid, double ask) {
-        return new double[]{1.0 / ask, 1.0 / bid};
-    }
-
-    public static void main(String[] args) {
-        System.out.println("=== Scenario 1: EURUSD + USDJPY -> EURJPY (mixed direction legs) ===");
-        run("EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EURJPY");
-
-        System.out.println("\n=== Scenario 2: EURUSD + GBPUSD -> EURGBP (both USD as quote) ===");
-        run("EURUSD", 1.0850, 1.0852, "GBPUSD", 1.2650, 1.2653, "EURGBP");
-
-        System.out.println("\n=== Scenario 3: USDJPY + USDCHF -> JPYCHF (both USD as base) ===");
-        run("USDJPY", 145.30, 145.35, "USDCHF", 0.8810, 0.8813, "JPYCHF");
-
-        System.out.println("\n=== Scenario 4: USDCAD + AUDUSD -> AUDCAD (mixed direction legs) ===");
-        run("USDCAD", 1.3720, 1.3724, "AUDUSD", 0.6510, 0.6513, "AUDCAD");
-
-        System.out.println("\n=== Scenario 5: inverse cross target -> GBPEUR (reverse of scenario 2) ===");
-        run("EURUSD", 1.0850, 1.0852, "GBPUSD", 1.2650, 1.2653, "GBPEUR");
-
-        System.out.println("\n=== Scenario 6: target pair equals an input pair directly -> EURUSD ===");
-        run("EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EURUSD");
-
-        System.out.println("\n=== Scenario 7: target pair is inverse of an input pair -> USDEUR ===");
-        run("EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "USDEUR");
-
-        System.out.println("\n=== Scenario 8: order of legs swapped, same result expected -> EURJPY ===");
-        run("USDJPY", 145.30, 145.35, "EURUSD", 1.0850, 1.0852, "EURJPY");
-
-        System.out.println("\n=== Scenario 9 (error): currencies don't match either leg -> GBPCHF ===");
-        run("EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "GBPCHF");
-
-        System.out.println("\n=== Scenario 10 (error): input leg is not a USD pair ===");
-        run("EURGBP", 0.8560, 0.8563, "USDJPY", 145.30, 145.35, "EURJPY");
-
-        System.out.println("\n=== Scenario 11 (error): target base equals target quote -> EUREUR ===");
-        run("EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EUREUR");
-
-        System.out.println("\n=== Scenario 12 (error): malformed target pair length ===");
-        run("EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EURJP");
-
-        System.out.println("\n=== Scenario 13: USDJPY + USDSGD -> JPYSGD (both USD as base) ===");
-        run("USDJPY", 145.30, 145.35, "USDSGD", 1.3400, 1.3403, "JPYSGD");
-    }
-
-    private static void run(String pair1, double pair1Bid, double pair1Ask,
-                             String pair2, double pair2Bid, double pair2Ask,
-                             String crossPair) {
-        System.out.printf("Input 1: %s bid=%.6f ask=%.6f%n", pair1, pair1Bid, pair1Ask);
-        System.out.printf("Input 2: %s bid=%.6f ask=%.6f%n", pair2, pair2Bid, pair2Ask);
-        System.out.println("Target : " + crossPair);
-        try {
-            double[] result = crossRate(pair1, pair1Bid, pair1Ask, pair2, pair2Bid, pair2Ask, crossPair);
-            System.out.printf("Result : %s bid=%.6f ask=%.6f%n", crossPair, result[0], result[1]);
-        } catch (IllegalArgumentException e) {
-            System.out.println("Error  : " + e.getMessage());
-        }
+    private static String decodeCurrency(int currency) {
+        return new String(new char[]{
+                (char) ((currency >>> 16) & 0xff),
+                (char) ((currency >>> 8) & 0xff),
+                (char) (currency & 0xff)
+        });
     }
 }
