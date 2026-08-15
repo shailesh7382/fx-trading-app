@@ -194,10 +194,12 @@ class CcyPairCrosserTest {
 
     private static void assertQuote(String scenario, double[] result,
                                     double expectedBid, double expectedAsk) {
-        LOGGER.info("{} | actual bid={} ask={} | expected bid={} ask={} | spread={}",
-                scenario, result[0], result[1], expectedBid, expectedAsk, result[1] - result[0]);
-        assertThat(result[0]).isCloseTo(expectedBid, within(1.0e-12));
-        assertThat(result[1]).isCloseTo(expectedAsk, within(1.0e-12));
+        LOGGER.info(String.format(
+                "%s | actual bid=%.6f ask=%.6f | expected bid=%.6f ask=%.6f | spread=%.6f",
+                scenario, result[0], result[1], expectedBid, expectedAsk, result[1] - result[0]));
+        // Production values are rounded to 6dp, so allow up to half that rounding step.
+        assertThat(result[0]).isCloseTo(expectedBid, within(1.0e-6));
+        assertThat(result[1]).isCloseTo(expectedAsk, within(1.0e-6));
         assertThat(result[0]).isLessThanOrEqualTo(result[1]);
     }
 

@@ -8,6 +8,8 @@ package com.example.util;
  */
 public final class CcyPairCrosser {
 
+    private static final double RESULT_ROUNDING_FACTOR = 1_000_000.0; // 6 decimal places
+
     private CcyPairCrosser() {
     }
 
@@ -111,6 +113,10 @@ public final class CcyPairCrosser {
         if (!Double.isFinite(bid) || !Double.isFinite(ask) || bid <= 0.0 || ask <= 0.0 || bid > ask) {
             throw new IllegalArgumentException("Calculated cross bid/ask is invalid: bid=" + bid + " ask=" + ask);
         }
-        return new double[]{bid, ask};
+        return new double[]{round(bid), round(ask)};
+    }
+
+    private static double round(double value) {
+        return Math.round(value * RESULT_ROUNDING_FACTOR) / RESULT_ROUNDING_FACTOR;
     }
 }
