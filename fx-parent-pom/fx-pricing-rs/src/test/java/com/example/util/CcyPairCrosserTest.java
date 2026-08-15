@@ -1,9 +1,6 @@
 package com.example.util;
 
 import java.util.EnumMap;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -64,14 +61,18 @@ class CcyPairCrosserTest {
         assertCross(CcyPair.USDJPY, 145.30, 145.35,
                 CcyPair.USDCHF, 0.8810, 0.8813, CcyPair.JPYCHF,
                 0.8810 / 145.35, 0.8813 / 145.30);
+
+        assertCross(CcyPair.USDJPY, 145.30, 145.35,
+                CcyPair.USDSGD, 1.3400, 1.3403, CcyPair.JPYSGD,
+                1.3400 / 145.35, 1.3403 / 145.30);
     }
 
     @Test
     void producesTheSameCrossWhenInputLegsAreSwapped() {
-        CcyPairCrosser.CrossRateCalculator calculator = CcyPairCrosser.calculatorFor(
-                CcyPair.USDJPY, CcyPair.EURUSD, CcyPair.EURJPY);
-
-        double[] result = calculator.crossRate(145.30, 145.35, 1.0850, 1.0852);
+        double[] result = CcyPairCrosser.crossRate(
+                CcyPair.USDJPY, 145.30, 145.35,
+                CcyPair.EURUSD, 1.0850, 1.0852,
+                CcyPair.EURJPY);
 
         assertQuote("swapped USDJPY + EURUSD -> EURJPY", result,
                 1.0850 * 145.30, 1.0852 * 145.35);
@@ -91,30 +92,12 @@ class CcyPairCrosserTest {
 
     @Test
     void copiesEitherCanonicalInputForUsdTargets() {
-        CcyPairCrosser.CrossRateCalculator eurUsd = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.EURUSD);
-        CcyPairCrosser.CrossRateCalculator usdJpy = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.USDJPY);
-
-        assertQuote("direct EURUSD", eurUsd.crossRate(1.0850, 1.0852, 145.30, 145.35),
+        assertQuote("direct EURUSD", CcyPairCrosser.crossRate(
+                        CcyPair.EURUSD, 1.0850, 1.0852, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURUSD),
                 1.0850, 1.0852);
-        assertQuote("direct USDJPY", usdJpy.crossRate(1.0850, 1.0852, 145.30, 145.35),
+        assertQuote("direct USDJPY", CcyPairCrosser.crossRate(
+                        CcyPair.EURUSD, 1.0850, 1.0852, CcyPair.USDJPY, 145.30, 145.35, CcyPair.USDJPY),
                 145.30, 145.35);
-    }
-
-    @Test
-    void reusesCallerOwnedStorageOnTheCheckedAndUncheckedHotPaths() {
-        CcyPairCrosser.CrossRateCalculator calculator = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.EURJPY);
-        double[] result = {-1.0, -1.0};
-
-        calculator.crossRate(1.0850, 1.0852, 145.30, 145.35, result);
-        assertQuote("checked reusable result", result,
-                1.0850 * 145.30, 1.0852 * 145.35);
-
-        calculator.crossRateUnchecked(1.0860, 1.0862, 145.40, 145.45, result);
-        assertQuote("unchecked reusable result", result,
-                1.0860 * 145.40, 1.0862 * 145.45);
     }
 
     @Test
@@ -126,127 +109,87 @@ class CcyPairCrosserTest {
 
         assertQuote("uppercase string adapter", result,
                 1.0850 * 145.30, 1.0852 * 145.35);
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor(
-                "eurusd", "USDJPY", "EURJPY"))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                "eurusd", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EURJPY"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor(
-                "USDEUR", "USDJPY", "EURJPY"))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                "USDEUR", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EURJPY"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void cachesCalculatorByOrderedEnumCombination() {
-        CcyPairCrosser.CrossRateCalculator first = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.EURJPY);
-        CcyPairCrosser.CrossRateCalculator repeated = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.EURJPY);
-        CcyPairCrosser.CrossRateCalculator stringAdapter = CcyPairCrosser.calculatorFor(
-                "EURUSD", "USDJPY", "EURJPY");
-        CcyPairCrosser.CrossRateCalculator reversedInputs = CcyPairCrosser.calculatorFor(
-                CcyPair.USDJPY, CcyPair.EURUSD, CcyPair.EURJPY);
+    void rejectsUnsupportedOrAmbiguousInstrumentTopology() {
+        LOGGER.info("Verifying rejection of unsupported and ambiguous currency routes");
 
-        LOGGER.info("Calculator cache identities | first={} repeated={} adapter={} reversed={}",
-                System.identityHashCode(first),
-                System.identityHashCode(repeated),
-                System.identityHashCode(stringAdapter),
-                System.identityHashCode(reversedInputs));
-        assertThat(repeated).isSameAs(first);
-        assertThat(stringAdapter).isSameAs(first);
-        assertThat(reversedInputs).isNotSameAs(first);
-    }
-
-    @Test
-    void publishesOneSharedCalculatorDuringConcurrentFirstLookup() {
-        Set<CcyPairCrosser.CrossRateCalculator> calculators = ConcurrentHashMap.newKeySet();
-
-        IntStream.range(0, 1_000).parallel().forEach(ignored -> calculators.add(
-                CcyPairCrosser.calculatorFor(
-                        CcyPair.XAUUSD, CcyPair.USDSGD, CcyPair.XAUSGD)));
-
-        LOGGER.info("Concurrent first lookup returned {} unique calculator instance(s)",
-                calculators.size());
-        assertThat(calculators).hasSize(1);
-    }
-
-    @Test
-    void rejectsUnsupportedOrAmbiguousInstrumentTopologyDuringCalculatorLookup() {
-        LOGGER.info("Verifying lookup-time rejection of unsupported and ambiguous currency routes");
-
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor(
-                null, CcyPair.USDJPY, CcyPair.EURJPY))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("firstUsdPair");
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor("EURUS1", "USDJPY", "EURJPY"))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                null, 1.0850, 1.0852, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURJPY))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                "EURUS1", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EURJPY"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No enum constant");
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor(
-                CcyPair.EURGBP, CcyPair.USDJPY, CcyPair.EURJPY))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURGBP, 0.8560, 0.8563, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURJPY))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must be a USD leg");
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor("USDUSD", "USDJPY", "EURJPY"))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                "USDUSD", 1.0, 1.0, "USDJPY", 145.30, 145.35, "EURJPY"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No enum constant");
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.EURUSD, CcyPair.EURUSD))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, 1.0850, 1.0852, CcyPair.EURUSD, 1.0850, 1.0852, CcyPair.EURUSD))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("distinct non-USD currencies");
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.GBPCHF))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, 1.0850, 1.0852, CcyPair.USDJPY, 145.30, 145.35, CcyPair.GBPCHF))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("currency GBP");
-        assertThatThrownBy(() -> CcyPairCrosser.calculatorFor("EURUSD", "USDJPY", "EUREUR"))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                "EURUSD", 1.0850, 1.0852, "USDJPY", 145.30, 145.35, "EUREUR"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No enum constant");
     }
 
     @Test
     void rejectsNonFiniteNonPositiveAndCrossedQuotes() {
-        CcyPairCrosser.CrossRateCalculator calculator = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.EURJPY);
-        LOGGER.info("Verifying runtime rejection of NaN, infinity, zero, and crossed quotes");
+        LOGGER.info("Verifying rejection of NaN, infinity, zero, and crossed quotes");
 
-        assertThatThrownBy(() -> calculator.crossRate(Double.NaN, 1.1, 145.30, 145.35))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, Double.NaN, 1.1, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURJPY))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("finite and positive");
-        assertThatThrownBy(() -> calculator.crossRate(1.0, Double.POSITIVE_INFINITY, 145.30, 145.35))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, 1.0, Double.POSITIVE_INFINITY, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURJPY))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("finite and positive");
-        assertThatThrownBy(() -> calculator.crossRate(0.0, 1.1, 145.30, 145.35))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, 0.0, 1.1, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURJPY))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("finite and positive");
-        assertThatThrownBy(() -> calculator.crossRate(1.2, 1.1, 145.30, 145.35))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, 1.2, 1.1, CcyPair.USDJPY, 145.30, 145.35, CcyPair.EURJPY))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot exceed ask");
     }
 
     @Test
-    void rejectsInvalidDestinationAndArithmeticOverflowWithoutPublishingAResult() {
-        CcyPairCrosser.CrossRateCalculator calculator = CcyPairCrosser.calculatorFor(
-                CcyPair.EURUSD, CcyPair.USDJPY, CcyPair.EURJPY);
-        LOGGER.info("Verifying destination bounds and fail-before-publish overflow behavior");
+    void rejectsArithmeticOverflowOnTheComputedCross() {
+        LOGGER.info("Verifying rejection of an out-of-range computed cross");
 
-        assertThatThrownBy(() -> calculator.crossRate(1.0, 1.1, 145.30, 145.35, new double[1]))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("length at least two");
-
-        double[] result = {7.0, 8.0};
-        assertThatThrownBy(() -> calculator.crossRate(
-                Double.MAX_VALUE, Double.MAX_VALUE,
-                Double.MAX_VALUE, Double.MAX_VALUE,
-                result))
+        assertThatThrownBy(() -> CcyPairCrosser.crossRate(
+                CcyPair.EURUSD, Double.MAX_VALUE, Double.MAX_VALUE,
+                CcyPair.USDJPY, Double.MAX_VALUE, Double.MAX_VALUE,
+                CcyPair.EURJPY))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Calculated cross");
-        assertThat(result).containsExactly(7.0, 8.0);
     }
 
     private static void assertCross(CcyPair pair1, double pair1Bid, double pair1Ask,
                                     CcyPair pair2, double pair2Bid, double pair2Ask,
                                     CcyPair crossPair, double expectedBid, double expectedAsk) {
-        CcyPairCrosser.CrossRateCalculator calculator =
-                CcyPairCrosser.calculatorFor(pair1, pair2, crossPair);
-        assertQuote(pair1 + " + " + pair2 + " -> " + crossPair,
-                calculator.crossRate(pair1Bid, pair1Ask, pair2Bid, pair2Ask),
-                expectedBid, expectedAsk);
+        double[] result = CcyPairCrosser.crossRate(
+                pair1, pair1Bid, pair1Ask, pair2, pair2Bid, pair2Ask, crossPair);
+        assertQuote(pair1 + " + " + pair2 + " -> " + crossPair, result, expectedBid, expectedAsk);
     }
 
     private static void assertQuote(String scenario, double[] result,

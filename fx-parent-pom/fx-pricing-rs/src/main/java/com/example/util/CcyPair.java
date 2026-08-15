@@ -40,6 +40,7 @@ public enum CcyPair {
     CADJPY(Ccy.CAD, Ccy.JPY, CrossRateFormula.DIVIDE_SECOND_BY_FIRST),
     CHFJPY(Ccy.CHF, Ccy.JPY, CrossRateFormula.DIVIDE_SECOND_BY_FIRST),
     JPYCHF(Ccy.JPY, Ccy.CHF, CrossRateFormula.DIVIDE_SECOND_BY_FIRST),
+    JPYSGD(Ccy.JPY, Ccy.SGD, CrossRateFormula.DIVIDE_SECOND_BY_FIRST),
     NZDJPY(Ccy.NZD, Ccy.JPY, CrossRateFormula.MULTIPLY_FIRST_AND_SECOND),
     EURCAD(Ccy.EUR, Ccy.CAD, CrossRateFormula.MULTIPLY_FIRST_AND_SECOND),
     GBPCAD(Ccy.GBP, Ccy.CAD, CrossRateFormula.MULTIPLY_FIRST_AND_SECOND),
