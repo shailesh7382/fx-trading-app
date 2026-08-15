@@ -26,6 +26,7 @@ public enum CcyPair {
     USDAED(Ccy.USD, Ccy.AED),
     USDIDR(Ccy.USD, Ccy.IDR),
     USDMYR(Ccy.USD, Ccy.MYR),
+    USDHKD(Ccy.USD, Ccy.HKD),
     XAUUSD(Ccy.XAU, Ccy.USD),
     XAGUSD(Ccy.XAG, Ccy.USD),
     XPTUSD(Ccy.XPT, Ccy.USD),

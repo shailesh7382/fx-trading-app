@@ -26,6 +26,7 @@ public enum Ccy {
     AED,
     IDR,
     MYR,
+    HKD,
     XAU,
     XAG,
     XPT,
