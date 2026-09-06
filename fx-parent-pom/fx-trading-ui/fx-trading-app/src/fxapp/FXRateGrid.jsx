@@ -6,18 +6,15 @@ import {
   Card,
   CardContent,
   Chip,
-  FormControlLabel,
   IconButton,
   InputBase,
   MenuItem,
   Paper,
   Stack,
-  Switch,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
-import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { amendLimitOrder, cancelLimitOrder, extractApiMessage, fetchFxGrid, submitLimitOrder } from '../api/client';
@@ -163,17 +160,14 @@ function FXRateGrid() {
     rates,
     error,
     isLoading,
-    lastUpdated,
     limitOrders = [],
     refresh,
-    isRatesStreaming = false,
-    setRatesStreaming = () => {},
+    manualRefreshToken = 0,
   } = useOutletContext();
   const maxVisibleRates = 6;
   const [serverRates, setServerRates] = useState([]);
   const [gridRequestFailed, setGridRequestFailed] = useState(false);
   const [isGridLoading, setIsGridLoading] = useState(false);
-  const [manualGridRefreshVersion, setManualGridRefreshVersion] = useState(0);
   const previousRatesRef = useRef(new Map());
   const selectionSeedRef = useRef({ search: '', sortBy: 'pair' });
   const [flashSignals, setFlashSignals] = useState({});
@@ -242,7 +236,7 @@ function FXRateGrid() {
       });
   }, [rates]);
 
-  const gridRefreshToken = isRatesStreaming ? lastUpdated : manualGridRefreshVersion;
+  const gridRefreshToken = manualRefreshToken;
 
   useEffect(() => {
     let isMounted = true;
@@ -667,69 +661,10 @@ function FXRateGrid() {
     qty,
   });
 
-  const handleRatesModeToggle = async (event) => {
-    const nextStreamingState = event.target.checked;
-    setRatesStreaming(nextStreamingState);
-
-    if (!nextStreamingState) {
-      setLimitOrderFeedback({ severity: 'info', message: 'RFQ mode.' });
-      return;
-    }
-
-    setLimitOrderFeedback({ severity: 'info', message: 'Streaming on.' });
-    await refresh?.({ forceRates: true });
-  };
-
-  const handleManualRatesRefresh = async () => {
-    await refresh?.({ forceRates: true });
-    setManualGridRefreshVersion((currentValue) => currentValue + 1);
-  };
-
   return (
     <Stack spacing={2.25}>
       {error ? <Alert severity="warning">{error}</Alert> : null}
       {limitOrderFeedback ? <Alert severity={limitOrderFeedback.severity}>{limitOrderFeedback.message}</Alert> : null}
-
-      <Paper sx={{ p: 1.35 }}>
-        <Stack direction="row" spacing={1.25} sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Rate controls
-            </Typography>
-          </Box>
-
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0, flexWrap: 'nowrap' }}>
-            <FormControlLabel
-              control={<Switch checked={isRatesStreaming} onChange={handleRatesModeToggle} />}
-              label={isRatesStreaming ? 'Live streaming' : 'RFQ'}
-              sx={{ mr: 0, whiteSpace: 'nowrap', '& .MuiFormControlLabel-label': { fontSize: '0.84rem', fontWeight: 600 } }}
-            />
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<SyncRoundedIcon fontSize="small" />}
-              onClick={handleManualRatesRefresh}
-              disabled={isLoading || isGridLoading}
-              sx={{
-                minWidth: 118,
-                height: 34,
-                px: 1.35,
-                fontSize: '0.76rem',
-                fontWeight: 600,
-                letterSpacing: 0,
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                '&:hover': {
-                  borderColor: 'primary.light',
-                  bgcolor: 'action.hover',
-                },
-              }}
-            >
-              Refresh
-            </Button>
-          </Stack>
-        </Stack>
-      </Paper>
 
       <Box
         sx={{

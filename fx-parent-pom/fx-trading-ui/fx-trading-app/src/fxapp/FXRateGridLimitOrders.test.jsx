@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -65,19 +65,24 @@ function renderRateGrid(workspaceOverrides = {}) {
     bookTrade: vi.fn(),
   };
 
+  const tree = (data) => (
+    <UserContext.Provider value={userContextValue}>
+      <MemoryRouter initialEntries={['/app/rates']}>
+        <Routes>
+          <Route path="/app" element={<TestWorkspaceShell workspaceData={data} />}>
+            <Route path="rates" element={<FXRateGrid />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </UserContext.Provider>
+  );
+
+  const renderResult = render(tree(workspaceData));
+
   return {
     refresh,
-    ...render(
-      <UserContext.Provider value={userContextValue}>
-        <MemoryRouter initialEntries={['/app/rates']}>
-          <Routes>
-            <Route path="/app" element={<TestWorkspaceShell workspaceData={workspaceData} />}>
-              <Route path="rates" element={<FXRateGrid />} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </UserContext.Provider>
-    ),
+    updateWorkspace: (updates) => renderResult.rerender(tree({ ...workspaceData, ...updates })),
+    ...renderResult,
   };
 }
 
@@ -111,16 +116,14 @@ test('shows active limit orders on the right-hand side', async () => {
   expect(screen.getByText(/Buy EURUSD/i)).toBeInTheDocument();
 });
 
-test('defaults the rates screen to manual RFQ mode and supports manual refresh', async () => {
-  const user = userEvent.setup();
-  const { refresh } = renderRateGrid();
+test('reloads RFQ rates when the workspace refresh signal fires', async () => {
+  const { updateWorkspace } = renderRateGrid();
 
-  const ratesToggle = await screen.findByRole('switch', { name: /rfq/i });
-  expect(ratesToggle).not.toBeChecked();
+  await waitFor(() => expect(fetchFxGrid).toHaveBeenCalledTimes(1));
 
-  await user.click(screen.getByRole('button', { name: /refresh/i }));
+  updateWorkspace({ manualRefreshToken: 1 });
 
-  expect(refresh).toHaveBeenCalledWith({ forceRates: true });
+  await waitFor(() => expect(fetchFxGrid).toHaveBeenCalledTimes(2));
 });
 
 test('submits a spot GTD limit order from the rate grid', async () => {

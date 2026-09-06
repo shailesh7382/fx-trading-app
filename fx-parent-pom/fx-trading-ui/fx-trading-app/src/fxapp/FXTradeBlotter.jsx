@@ -2,8 +2,6 @@ import React, { useContext, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   InputAdornment,
   MenuItem,
@@ -44,19 +42,6 @@ function FXTradeBlotter() {
       return matchesStatus && matchesSearch;
     });
   }, [search, statusFilter, trades]);
-
-  const metrics = useMemo(() => {
-    const grossNotional = visibleTrades.reduce((sum, trade) => sum + Number(trade.qty || 0) * Number(trade.price || 0), 0);
-    const buyCount = visibleTrades.filter((trade) => trade.direction === 'Buy').length;
-    const localFallbacks = visibleTrades.filter((trade) => trade.bookingMode === 'local').length;
-
-    return {
-      grossNotional,
-      buyCount,
-      sellCount: visibleTrades.length - buyCount,
-      localFallbacks,
-    };
-  }, [visibleTrades]);
 
   const exportBlotter = () => {
     downloadCsv(
@@ -123,34 +108,6 @@ function FXTradeBlotter() {
             </TextField>
           </Box>
 
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 1.25,
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' },
-            }}
-          >
-            {[
-              { label: 'Visible trades', value: visibleTrades.length, helper: `${trades.length} total stored` },
-              { label: 'Gross notional', value: formatCurrency(metrics.grossNotional), helper: 'Approx. USD equivalent' },
-              { label: 'Buy / Sell mix', value: `${metrics.buyCount} / ${metrics.sellCount}`, helper: 'Directional split' },
-              { label: 'Fallback captures', value: metrics.localFallbacks, helper: 'Tickets stored locally when API is offline' },
-            ].map((metric) => (
-              <Card key={metric.label}>
-                <CardContent>
-                  <Typography color="text.secondary" variant="body2">
-                    {metric.label}
-                  </Typography>
-                  <Typography variant="h4" sx={{ mt: 0.8 }}>
-                    {metric.value}
-                  </Typography>
-                  <Typography color="text.secondary" variant="body2" sx={{ mt: 0.75 }}>
-                    {metric.helper}
-                  </Typography>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
         </Stack>
       </Paper>
 

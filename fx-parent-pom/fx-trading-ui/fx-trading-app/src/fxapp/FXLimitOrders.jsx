@@ -2,9 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Chip,
-  IconButton,
   InputAdornment,
   LinearProgress,
   MenuItem,
@@ -14,7 +12,6 @@ import {
   Typography,
 } from '@mui/material';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
-import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
 import { useOutletContext } from 'react-router-dom';
 import { extractApiMessage, fetchLimitOrders } from '../api/client';
 import { formatDateTime, formatNotional, formatRate } from '../utils/formatters';
@@ -62,7 +59,7 @@ function OrderCell({ label, children, sx = {} }) {
 }
 
 function FXLimitOrders() {
-  const { refresh } = useOutletContext();
+  const { manualRefreshToken = 0 } = useOutletContext();
   const [orders, setOrders] = useState([]);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
@@ -90,6 +87,14 @@ function FXLimitOrders() {
   }, [loadOrders]);
 
   useEffect(() => {
+    if (!manualRefreshToken) {
+      return;
+    }
+
+    loadOrders({ keepSpinner: true });
+  }, [loadOrders, manualRefreshToken]);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       loadOrders({ keepSpinner: true });
     }, 5000);
@@ -111,20 +116,6 @@ function FXLimitOrders() {
       .sort((left, right) => new Date(right.submittedAt || 0) - new Date(left.submittedAt || 0));
   }, [orders, search, statusFilter]);
 
-  const metrics = useMemo(
-    () => ({
-      active: orders.filter((order) => order.status === 'ACTIVE').length,
-      executed: orders.filter((order) => order.status === 'EXECUTED').length,
-      expired: orders.filter((order) => order.status === 'EXPIRED').length,
-      cancelled: orders.filter((order) => order.status === 'CANCELLED').length,
-    }),
-    [orders]
-  );
-
-  const handleRefresh = async () => {
-    await Promise.all([loadOrders({ keepSpinner: true }), refresh?.()]);
-  };
-
   return (
     <Stack spacing={2}>
       <Paper sx={{ overflow: 'hidden' }}>
@@ -140,64 +131,10 @@ function FXLimitOrders() {
                 Order status and execution history.
               </Typography>
             </Box>
-            <IconButton
-              aria-label="Refresh orders"
-              color="primary"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              sx={{ display: { xs: 'inline-flex', sm: 'none' }, border: subtleBorder }}
-            >
-              <SyncRoundedIcon fontSize="small" />
-            </IconButton>
-            <Button
-              variant="outlined"
-              startIcon={<SyncRoundedIcon />}
-              onClick={handleRefresh}
-              disabled={isLoading}
-              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-            >
-              Refresh
-            </Button>
           </Stack>
         </Box>
 
         {isLoading ? <LinearProgress sx={{ height: 2 }} /> : null}
-
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, 1fr))' },
-            borderTop: subtleBorder,
-            bgcolor: 'background.default',
-          }}
-        >
-          {[
-            { label: 'Active', value: metrics.active },
-            { label: 'Executed', value: metrics.executed },
-            { label: 'Expired', value: metrics.expired },
-            { label: 'Cancelled', value: metrics.cancelled },
-          ].map((metric, index) => (
-            <Box
-              key={metric.label}
-              sx={{
-                px: { xs: 2, md: 2.5 },
-                py: { xs: 1.2, md: 1.5 },
-                borderLeft: {
-                  xs: index % 2 ? subtleBorder : 'none',
-                  sm: index ? subtleBorder : 'none',
-                },
-                borderTop: { xs: index > 1 ? subtleBorder : 'none', sm: 'none' },
-              }}
-            >
-              <Typography color="text.secondary" variant="caption">
-                {metric.label}
-              </Typography>
-              <Typography sx={{ mt: 0.15, fontSize: { xs: '1.35rem', md: '1.55rem' }, lineHeight: 1.2, fontWeight: 650 }}>
-                {metric.value}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
       </Paper>
 
       {error ? <Alert severity="warning">{error}</Alert> : null}
