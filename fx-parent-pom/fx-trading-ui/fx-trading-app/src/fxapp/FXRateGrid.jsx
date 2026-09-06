@@ -39,15 +39,11 @@ function getQuoteTileStyles(baseBackground, signal) {
   const signalStyles =
     signal === 'up'
       ? {
-          borderColor: 'rgba(43, 213, 118, 0.55)',
-          boxShadow: '0 0 0 1px rgba(43, 213, 118, 0.22), 0 0 18px rgba(43, 213, 118, 0.14)',
-          transform: 'translateY(-1px)',
+          borderColor: 'primary.main',
         }
       : signal === 'down'
         ? {
-            borderColor: 'rgba(255, 107, 129, 0.55)',
-            boxShadow: '0 0 0 1px rgba(255, 107, 129, 0.22), 0 0 18px rgba(255, 107, 129, 0.14)',
-            transform: 'translateY(-1px)',
+            borderColor: 'secondary.main',
           }
         : {};
 
@@ -56,7 +52,8 @@ function getQuoteTileStyles(baseBackground, signal) {
     borderRadius: 0.75,
     bgcolor: baseBackground,
     border: '1px solid transparent',
-    transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+    boxShadow: 'none',
+    transition: 'border-color 120ms ease',
     ...signalStyles,
   };
 }
@@ -146,7 +143,7 @@ function RateDisplay({ value, accentColor }) {
       </Typography>
       <Typography
         component="span"
-        sx={{ fontSize: { xs: '1.95rem', md: '2.45rem' }, fontWeight: 800, letterSpacing: '0.01em', color: accentColor }}
+        sx={{ fontSize: { xs: '1.8rem', md: '2.2rem' }, fontWeight: 650, letterSpacing: 0, color: accentColor }}
       >
         {significant}
       </Typography>
@@ -675,11 +672,11 @@ function FXRateGrid() {
     setRatesStreaming(nextStreamingState);
 
     if (!nextStreamingState) {
-      setLimitOrderFeedback({ severity: 'info', message: 'Manual RFQ mode enabled. ' });
+      setLimitOrderFeedback({ severity: 'info', message: 'RFQ mode.' });
       return;
     }
 
-    setLimitOrderFeedback({ severity: 'info', message: 'Live streaming enabled.' });
+    setLimitOrderFeedback({ severity: 'info', message: 'Streaming on.' });
     await refresh?.({ forceRates: true });
   };
 
@@ -697,7 +694,7 @@ function FXRateGrid() {
         <Stack direction="row" spacing={1.25} sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Manual RFQ controls
+              Rate controls
             </Typography>
           </Box>
 
@@ -718,14 +715,13 @@ function FXRateGrid() {
                 height: 34,
                 px: 1.35,
                 fontSize: '0.76rem',
-                fontWeight: 700,
-                letterSpacing: '0.02em',
-                borderColor: 'rgba(143, 189, 232, 0.24)',
-                bgcolor: 'rgba(255,255,255,0.03)',
-                color: 'text.primary',
+                fontWeight: 600,
+                letterSpacing: 0,
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
                 '&:hover': {
-                  borderColor: 'rgba(143, 189, 232, 0.38)',
-                  bgcolor: 'rgba(255,255,255,0.05)',
+                  borderColor: 'primary.light',
+                  bgcolor: 'action.hover',
                 },
               }}
             >
@@ -776,13 +772,13 @@ function FXRateGrid() {
                             flex: 1,
                             '& .MuiOutlinedInput-root': {
                               borderRadius: 0.45,
-                              bgcolor: 'rgba(255,255,255,0.02)',
+                              bgcolor: 'background.paper',
                             },
                             '& .MuiSelect-select': {
                               py: 0.45,
                               fontSize: '0.78rem',
-                              fontWeight: 700,
-                              letterSpacing: '0.04em',
+                              fontWeight: 600,
+                              letterSpacing: 0,
                             },
                           }}
                         >
@@ -802,13 +798,13 @@ function FXRateGrid() {
                             flexShrink: 0,
                             '& .MuiOutlinedInput-root': {
                               borderRadius: 0.45,
-                              bgcolor: 'rgba(255,255,255,0.02)',
+                              bgcolor: 'background.paper',
                             },
                             '& .MuiSelect-select': {
                               py: 0.45,
                               fontSize: '0.76rem',
-                              fontWeight: 700,
-                              letterSpacing: '0.04em',
+                              fontWeight: 600,
+                              letterSpacing: 0,
                               textAlign: 'center',
                             },
                           }}
@@ -823,11 +819,11 @@ function FXRateGrid() {
                     </Stack>
 
                     <Box sx={{ display: 'grid', gap: 0.8, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-                      <Paper sx={getQuoteTileStyles('rgba(255, 107, 129, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
-                        <RateDisplay value={rate.bid} accentColor="error.main" />
+                      <Paper sx={getQuoteTileStyles('#F3F6F9', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
+                        <RateDisplay value={rate.bid} accentColor="primary.dark" />
                         <Button
                           fullWidth
-                          color="error"
+                          color="primary"
                           variant="outlined"
                           sx={{ mt: 0.75, minHeight: 30, fontWeight: 700, fontSize: '0.74rem', py: 0.3 }}
                           onClick={() =>
@@ -840,11 +836,11 @@ function FXRateGrid() {
                         </Button>
                       </Paper>
 
-                      <Paper sx={getQuoteTileStyles('rgba(43, 213, 118, 0.08)', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.ask)}>
-                        <RateDisplay value={rate.ask} accentColor="success.main" />
+                      <Paper sx={getQuoteTileStyles('#EDF4FA', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.ask)}>
+                        <RateDisplay value={rate.ask} accentColor="primary.main" />
                         <Button
                           fullWidth
-                          color="success"
+                          color="primary"
                           variant="outlined"
                           sx={{ mt: 0.75, minHeight: 30, fontWeight: 700, fontSize: '0.74rem', py: 0.3 }}
                           onClick={() =>
@@ -863,8 +859,8 @@ function FXRateGrid() {
                       sx={{
                         p: 0.55,
                         borderRadius: 0.75,
-                        borderColor: 'rgba(255,255,255,0.08)',
-                        bgcolor: 'rgba(255,255,255,0.02)',
+                        borderColor: 'divider',
+                        bgcolor: 'background.default',
                       }}
                     >
                       <Stack
@@ -880,8 +876,9 @@ function FXRateGrid() {
                             px: 0.55,
                             py: 0.2,
                             borderRadius: 0.6,
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            bgcolor: 'rgba(255,255,255,0.02)',
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            bgcolor: 'background.paper',
                             minWidth: 0,
                             flex: '1 1 auto',
                           }}
@@ -942,8 +939,8 @@ function FXRateGrid() {
                       sx={{
                         p: 0.8,
                         borderRadius: 0.75,
-                        borderColor: 'rgba(255,255,255,0.08)',
-                        bgcolor: 'rgba(255,255,255,0.02)',
+                        borderColor: 'divider',
+                        bgcolor: 'background.default',
                       }}
                     >
                       <Stack spacing={0.85}>
@@ -972,8 +969,8 @@ function FXRateGrid() {
                                 sx={{
                                   '& .MuiInputBase-root': {
                                     minHeight: 30,
-                                    bgcolor: 'rgba(255,255,255,0.035)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                                    bgcolor: 'background.paper',
+                                    boxShadow: 'none',
                                   },
                                   '& .MuiSelect-select': {
                                     fontSize: '0.72rem',
@@ -984,10 +981,10 @@ function FXRateGrid() {
                                     borderRadius: 1.2,
                                   },
                                   '& .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'rgba(255,255,255,0.12)',
+                                    borderColor: 'divider',
                                   },
                                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'rgba(255,255,255,0.18)',
+                                    borderColor: 'primary.light',
                                   },
                                 }}
                               >
@@ -1004,8 +1001,8 @@ function FXRateGrid() {
                                 sx={{
                                   '& .MuiInputBase-root': {
                                     minHeight: 30,
-                                    bgcolor: 'rgba(255,255,255,0.035)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                                    bgcolor: 'background.paper',
+                                    boxShadow: 'none',
                                   },
                                   '& .MuiInputBase-input': {
                                     fontSize: '0.74rem',
@@ -1016,10 +1013,10 @@ function FXRateGrid() {
                                     borderRadius: 1.2,
                                   },
                                   '& .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'rgba(255,255,255,0.12)',
+                                    borderColor: 'divider',
                                   },
                                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'rgba(255,255,255,0.18)',
+                                    borderColor: 'primary.light',
                                   },
                                 }}
                               />
@@ -1039,8 +1036,8 @@ function FXRateGrid() {
                                   width: 74,
                                   '& .MuiInputBase-root': {
                                     minHeight: 30,
-                                    bgcolor: 'rgba(255,255,255,0.035)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                                    bgcolor: 'background.paper',
+                                    boxShadow: 'none',
                                   },
                                   '& .MuiSelect-select': {
                                     fontSize: '0.72rem',
@@ -1051,10 +1048,10 @@ function FXRateGrid() {
                                     borderRadius: 1.2,
                                   },
                                   '& .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'rgba(255,255,255,0.12)',
+                                    borderColor: 'divider',
                                   },
                                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'rgba(255,255,255,0.18)',
+                                    borderColor: 'primary.light',
                                   },
                                 }}
                               >
@@ -1084,7 +1081,7 @@ function FXRateGrid() {
                           </>
                         ) : (
                           <Alert severity="info" sx={{ mb: 0 }}>
-                            Switch the card tenor back to SP to place a limit order from the rate grid.
+                            Limit orders require SP tenor.
                           </Alert>
                         )}
                       </Stack>
@@ -1185,7 +1182,7 @@ function FXRateGrid() {
                       </Typography>
 
                       {editingOrderId === order.id && amendOrderForm ? (
-                        <Paper variant="outlined" sx={{ p: 1.1, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                        <Paper variant="outlined" sx={{ p: 1.1, borderColor: 'divider', bgcolor: 'background.default' }}>
                           <Stack spacing={1}>
                             <Typography variant="subtitle2">Amend active order</Typography>
                             <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' } }}>
@@ -1214,7 +1211,7 @@ function FXRateGrid() {
                                 <MenuItem value="GTD">GTD</MenuItem>
                               </TextField>
                               {amendOrderForm.timeInForce === 'GTD' ? (
-                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'divider', bgcolor: 'background.default' }}>
                                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.1 }}>
                                     Good till
                                   </Typography>
@@ -1223,7 +1220,7 @@ function FXRateGrid() {
                                   </Typography>
                                 </Paper>
                               ) : (
-                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.015)' }}>
+                                <Paper variant="outlined" sx={{ px: 1.25, py: 0.95, borderColor: 'divider', bgcolor: 'background.default' }}>
                                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.1 }}>
                                     Good till
                                   </Typography>
@@ -1285,7 +1282,7 @@ function FXRateGrid() {
               <Paper sx={{ p: 2.5, textAlign: 'center' }}>
                 <Typography variant="subtitle1">No active spot limit orders</Typography>
                 <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                  Submit a GTC or GTD order from any spot rate card to start monitoring it on the server.
+                  Submit one from a spot rate card.
                 </Typography>
               </Paper>
             )}
@@ -1297,7 +1294,7 @@ function FXRateGrid() {
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography variant="h6">No instruments match your filter</Typography>
           <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-            Adjust the search, tenor, or sorting controls to restore the live market view.
+            Adjust the filters.
           </Typography>
         </Paper>
       ) : null}

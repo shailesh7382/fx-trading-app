@@ -12,7 +12,6 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import DoneAllRoundedIcon from '@mui/icons-material/DoneAllRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import { useLocation, useOutletContext } from 'react-router-dom';
@@ -61,14 +60,14 @@ function getPairForMetal(metalType = 'XAU') {
 function getProductDescription(productType) {
   switch (productType) {
     case 'SWAP':
-      return 'Capture near and far legs for an FX swap with linked settlement dates and pricing.';
+      return 'Near and far FX legs.';
     case 'NDF':
-      return 'Book a non-deliverable forward with fixing instructions and settlement metadata.';
+      return 'Non-deliverable forward.';
     case 'BULLION':
-      return 'Capture precious metals flow with metal selection, settlement type, and manual pricing.';
+      return 'Precious metals trade.';
     case 'SPOT_FWD':
     default:
-      return 'Book an FX spot or forward ticket from live rates or manual input.';
+      return 'FX spot or forward.';
   }
 }
 
@@ -488,7 +487,7 @@ function FXTradeBooking() {
         marketSource: activeRate?.source || 'MANUAL',
       }).then((bookedTrade) => {
         setSeverity('success');
-        setMessage(`Trade ${bookedTrade.id} booked successfully (${bookedTrade.bookingMode} capture).`);
+        setMessage(`Trade ${bookedTrade.id} booked.`);
       });
     } finally {
       setIsSubmitting(false);
@@ -498,11 +497,10 @@ function FXTradeBooking() {
   const bookingPaperSx = {
     borderRadius: 1,
     border: '1px solid',
-    borderColor: (theme) => alpha(theme.palette.primary.light, 0.18),
-    bgcolor: (theme) => alpha(theme.palette.common.white, 0.05),
-    backgroundImage: (theme) => `linear-gradient(180deg, ${alpha(theme.palette.common.white, 0.08)} 0%, ${alpha(theme.palette.primary.light, 0.04)} 100%)`,
-    boxShadow: (theme) => `0 18px 40px ${alpha(theme.palette.common.black, 0.2)}`,
-    backdropFilter: 'blur(12px)',
+    borderColor: 'divider',
+    bgcolor: 'background.paper',
+    backgroundImage: 'none',
+    boxShadow: 'none',
   };
 
   const quoteProtectionValue = quoteTimerActive ? Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100) : 0;
@@ -512,7 +510,7 @@ function FXTradeBooking() {
       spacing={2.25}
       sx={{
         '& .MuiInputBase-root': {
-          bgcolor: (theme) => alpha(theme.palette.common.white, 0.04),
+          bgcolor: 'background.paper',
         },
       }}
     >
@@ -549,13 +547,13 @@ function FXTradeBooking() {
                     flex: { xs: '1 1 calc(50% - 6px)', md: '1 1 0' },
                     borderRadius: 1,
                     border: '1px solid',
-                    borderColor: (theme) => alpha(theme.palette.primary.light, 0.18),
+                    borderColor: 'divider',
                     px: 1,
                     py: 0.8,
                     fontSize: '0.8rem',
                     fontWeight: 700,
                     color: 'text.secondary',
-                    bgcolor: (theme) => alpha(theme.palette.common.white, 0.03),
+                    bgcolor: 'background.paper',
                   },
                   '& .Mui-selected': {
                     color: 'primary.contrastText !important',
@@ -731,7 +729,7 @@ function FXTradeBooking() {
               sx={{
                 p: 1.25,
                 borderRadius: 1,
-                bgcolor: (theme) => alpha(theme.palette.common.white, 0.06),
+                bgcolor: 'background.default',
               }}
             >
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -743,7 +741,7 @@ function FXTradeBooking() {
                     flex: 1,
                     height: 8,
                     borderRadius: 1,
-                    bgcolor: (theme) => alpha(theme.palette.common.white, 0.08),
+                    bgcolor: 'divider',
                   }}
                 />
                 <Typography variant="body2" color={quoteExpired ? 'error.main' : 'primary.light'} sx={{ flexShrink: 0, minWidth: 88, textAlign: 'right' }}>
@@ -752,16 +750,16 @@ function FXTradeBooking() {
               </Stack>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
                 {formData.productType !== 'SPOT_FWD'
-                  ? 'Quote timing applies to FX Spot/Fwd tickets only. Other product types can be booked with manual pricing.'
+                  ? 'Quote timer applies to FX Spot/Fwd only.'
                   : quoteTimerActive
-                  ? `The streamed price remains bookable for up to ${quoteDurationSeconds} seconds before repricing is required.`
-                  : 'Complete all required booking fields to activate quote timing.'}
+                  ? `Price valid for ${quoteDurationSeconds} seconds.`
+                  : 'Complete required fields to start the timer.'}
               </Typography>
             </Box>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between' }}>
               <Button size="small" type="button" variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={repriceTicket}>
-                Refresh quote timer
+                Refresh quote
               </Button>
               <Button size="small" type="submit" variant="contained" startIcon={<DoneAllRoundedIcon />} disabled={isSubmitting || quoteExpired || !isFormComplete} sx={{ minWidth: { sm: 168 } }}>
                 {isSubmitting ? 'Booking trade…' : 'Book trade'}

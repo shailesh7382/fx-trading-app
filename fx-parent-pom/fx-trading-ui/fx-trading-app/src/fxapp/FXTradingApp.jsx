@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   AppBar,
   Avatar,
@@ -7,7 +7,6 @@ import {
   BottomNavigationAction,
   Box,
   Chip,
-  Divider,
   Drawer,
   IconButton,
   List,
@@ -34,45 +33,26 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import UserContext from './UserContext';
 import useWorkspaceData from './useWorkspaceData';
-import { formatDateTime, formatRelativeTime } from '../utils/formatters';
 import ecxIcon from '../assets/eCX-icon.svg';
 
-const drawerWidth = 280;
+const drawerWidth = 248;
 
 const navigationItems = [
-  { label: 'Rates', path: '/app/rates', icon: CandlestickChartRoundedIcon },
-  { label: 'Limit orders', path: '/app/limit-orders', icon: PendingActionsRoundedIcon },
-  { label: 'Notifications', path: '/app/notifications', icon: NotificationsRoundedIcon, hasBadge: true },
-  { label: 'Booking', path: '/app/booking', icon: AddCardRoundedIcon },
-  { label: 'Blotter', path: '/app/blotter', icon: ReceiptLongRoundedIcon },
+  { label: 'Rates', mobileLabel: 'Rates', path: '/app/rates', icon: CandlestickChartRoundedIcon },
+  { label: 'Limit orders', mobileLabel: 'Orders', path: '/app/limit-orders', icon: PendingActionsRoundedIcon },
+  { label: 'Notifications', mobileLabel: 'Alerts', path: '/app/notifications', icon: NotificationsRoundedIcon, hasBadge: true },
+  { label: 'Booking', mobileLabel: 'Book', path: '/app/booking', icon: AddCardRoundedIcon },
+  { label: 'Blotter', mobileLabel: 'Blotter', path: '/app/blotter', icon: ReceiptLongRoundedIcon },
   { label: 'Analysis', path: '/app/analysis', icon: InsightsRoundedIcon },
 ];
 
 const pageTitles = {
-  '/app/rates': {
-    title: 'Rates',
-    subtitle: 'Review prices.',
-  },
-  '/app/limit-orders': {
-    title: 'Limit orders',
-    subtitle: 'Review active and historical spot limit orders.',
-  },
-  '/app/notifications': {
-    title: 'Notifications',
-    subtitle: 'Monitor server-side trade alerts, order lifecycle events, and market commentary.',
-  },
-  '/app/booking': {
-    title: 'Booking',
-    subtitle: 'Capture trade details and settlement terms.',
-  },
-  '/app/blotter': {
-    title: 'Trade blotter',
-    subtitle: 'Review booked trades, status, and client activity.',
-  },
-  '/app/analysis': {
-    title: 'Market analysis',
-    subtitle: 'Monitor price moves, spread conditions, and liquidity.',
-  },
+  '/app/rates': 'Rates',
+  '/app/limit-orders': 'Limit orders',
+  '/app/notifications': 'Notifications',
+  '/app/booking': 'Booking',
+  '/app/blotter': 'Trade blotter',
+  '/app/analysis': 'Market analysis',
 };
 
 function FXTradingApp() {
@@ -80,24 +60,14 @@ function FXTradingApp() {
   const navigate = useNavigate();
   const location = useLocation();
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
-  const { userDetails, logout, trades } = useContext(UserContext);
+  const { userDetails, logout } = useContext(UserContext);
   const workspaceData = useWorkspaceData();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const pageMeta = pageTitles[location.pathname] || pageTitles['/app/rates'];
+  const pageTitle = pageTitles[location.pathname] || pageTitles['/app/rates'];
   const userDisplayName = userDetails?.username || 'Trader';
   const userRole = userDetails?.userType || 'FX Desk';
-  const userRegion = userDetails?.region || 'Global';
   const notificationCount = workspaceData.notificationCount || 0;
-
-  const userSummaryItems = useMemo(
-    () => [
-      { label: 'Email', value: userDetails?.email || 'n/a' },
-      { label: 'Last sign-in', value: formatDateTime(userDetails?.lastLoginTimestamp) },
-      { label: 'Feed', value: `Updated ${formatRelativeTime(workspaceData.lastUpdated)}` },
-    ],
-    [userDetails?.email, userDetails?.lastLoginTimestamp, workspaceData.lastUpdated]
-  );
 
   const renderNavigationIcon = (item) => {
     const Icon = item.icon;
@@ -108,7 +78,7 @@ function FXTradingApp() {
     }
 
     return (
-      <Badge badgeContent={notificationCount} color="error" max={99} invisible={!notificationCount}>
+      <Badge badgeContent={notificationCount} color="primary" max={99} invisible={!notificationCount}>
         {iconNode}
       </Badge>
     );
@@ -116,32 +86,29 @@ function FXTradingApp() {
 
   const drawerContent = (
     <Stack sx={{ height: '100%' }}>
-      <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
+      <Box sx={{ px: 2, pt: 2, pb: 1.25 }}>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-          <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 36, height: 36, flexShrink: 0 }} />
+          <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 34, height: 34, flexShrink: 0 }} />
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="overline" color="primary.light" sx={{ letterSpacing: 1.4, lineHeight: 1.2 }}>
-              eCX
+            <Typography variant="subtitle1" sx={{ lineHeight: 1.2 }}>
+              eCX Trading
             </Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
-              FX trading workspace
-            </Typography>
+            <Typography variant="caption" color="text.secondary">FX workspace</Typography>
           </Box>
         </Stack>
       </Box>
 
       <Paper
         sx={{
-          mx: 2,
-          p: 1.5,
+          mx: 1.5,
+          p: 1.25,
           borderRadius: 1,
-          bgcolor: alpha(theme.palette.common.white, 0.04),
-          border: 'none',
+          bgcolor: 'background.default',
           boxShadow: 'none',
         }}
       >
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-          <Avatar sx={{ width: 38, height: 38, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.95rem', fontWeight: 700 }}>
+          <Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.85rem', fontWeight: 600 }}>
             {userDisplayName.charAt(0)?.toUpperCase() || 'T'}
           </Avatar>
           <Box sx={{ minWidth: 0, flexGrow: 1 }}>
@@ -167,34 +134,9 @@ function FXTradingApp() {
           </Tooltip>
         </Stack>
 
-        <Stack direction="row" gap={0.75} sx={{ mt: 1.25, flexWrap: 'wrap' }}>
-          <Chip size="small" label={userRegion} variant="outlined" sx={{ height: 22 }} />
-          <Chip size="small" label={`${trades.length} trades`} variant="outlined" sx={{ height: 22 }} />
-        </Stack>
-
-        <Divider sx={{ my: 1.25 }} />
-
-        <Stack spacing={0.85}>
-          {userSummaryItems.map((item) => (
-            <Stack key={item.label} direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                {item.label}
-              </Typography>
-              <Typography variant="caption" sx={{ textAlign: 'right', maxWidth: 150 }}>
-                {item.value}
-              </Typography>
-            </Stack>
-          ))}
-        </Stack>
       </Paper>
 
-      <Box sx={{ px: 2, pt: 1.5 }}>
-        <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2 }}>
-          Navigation
-        </Typography>
-      </Box>
-
-      <List sx={{ px: 1.25, py: 1.25, flexGrow: 1 }}>
+      <List sx={{ px: 1.25, py: 1.5, flexGrow: 1 }}>
         {navigationItems.map((item) => {
           const selected = location.pathname.startsWith(item.path);
 
@@ -218,17 +160,17 @@ function FXTradingApp() {
                 },
                 '& .MuiListItemText-primary': {
                   fontSize: '0.94rem',
-                  fontWeight: selected ? 700 : 600,
+                  fontWeight: selected ? 600 : 500,
                 },
                 '&.Mui-selected': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.14),
-                  borderColor: alpha(theme.palette.primary.light, 0.2),
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  borderColor: alpha(theme.palette.primary.main, 0.12),
                 },
                 '&.Mui-selected:hover': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                 },
                 '&:hover': {
-                  bgcolor: alpha(theme.palette.common.white, 0.04),
+                  bgcolor: 'action.hover',
                 },
               }}
             >
@@ -259,14 +201,13 @@ function FXTradingApp() {
         color="transparent"
         elevation={0}
         sx={{
-          backdropFilter: 'blur(16px)',
           borderBottom: `1px solid ${theme.palette.divider}`,
           width: { lg: `calc(100% - ${drawerWidth}px)` },
           ml: { lg: `${drawerWidth}px` },
-          bgcolor: 'rgba(4, 9, 19, 0.7)',
+          bgcolor: 'background.paper',
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 72, md: 80 }, px: { xs: 2, md: 3 } }}>
+        <Toolbar sx={{ minHeight: { xs: 64, md: 68 }, px: { xs: 2, md: 3 } }}>
           {!isDesktop ? (
             <IconButton edge="start" color="inherit" onClick={() => setMobileOpen(true)} sx={{ mr: 1.25 }}>
               <MenuRoundedIcon />
@@ -274,31 +215,29 @@ function FXTradingApp() {
           ) : null}
 
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography variant="h5" noWrap>
-              {pageMeta.title}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {pageMeta.subtitle}
+            <Typography variant="h6" noWrap>
+              {pageTitle}
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Stack direction="row" spacing={{ xs: 0.25, sm: 1 }} sx={{ alignItems: 'center' }}>
             <Tooltip title="Notifications">
               <IconButton color="inherit" onClick={() => navigate('/app/notifications')}>
-                <Badge badgeContent={notificationCount} color="error" max={99} invisible={!notificationCount}>
+                <Badge badgeContent={notificationCount} color="primary" max={99} invisible={!notificationCount}>
                   <NotificationsRoundedIcon />
                 </Badge>
               </IconButton>
             </Tooltip>
             <Tooltip title="Refresh live market data">
-              <IconButton color="inherit" onClick={workspaceData.refresh}>
+              <IconButton color="inherit" onClick={workspaceData.refresh} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
                 <SyncRoundedIcon />
               </IconButton>
             </Tooltip>
-            <Chip label={workspaceData.isDemo ? 'Demo' : 'Live'} color={workspaceData.isDemo ? 'warning' : 'primary'} />
+            <Chip label={workspaceData.isDemo ? 'Demo' : 'Live'} variant="outlined" size="small" sx={{ display: { xs: 'none', sm: 'inline-flex' } }} />
             <Tooltip title="Sign out">
               <IconButton
                 color="inherit"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                 onClick={() => {
                   logout();
                   navigate('/');
@@ -322,18 +261,17 @@ function FXTradingApp() {
           [`& .MuiDrawer-paper`]: {
             width: drawerWidth,
             boxSizing: 'border-box',
-            bgcolor: 'rgba(4, 9, 19, 0.96)',
+            bgcolor: 'background.paper',
             borderRight: `1px solid ${theme.palette.divider}`,
           },
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 72, md: 80 } }} />
         {drawerContent}
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, width: '100%' }}>
-        <Toolbar sx={{ minHeight: { xs: 72, md: 80 } }} />
-        <Box sx={{ px: { xs: 2, md: 3 }, pt: 2.5, pb: { xs: 12, lg: 3 }, maxWidth: 1600, mx: 'auto' }}>
+        <Toolbar sx={{ minHeight: { xs: 64, md: 68 } }} />
+        <Box sx={{ px: { xs: 1.5, sm: 2, md: 3 }, pt: { xs: 1.5, md: 2 }, pb: { xs: 11, lg: 3 }, maxWidth: 1600, mx: 'auto' }}>
           <Outlet context={workspaceData} />
         </Box>
       </Box>
@@ -342,23 +280,31 @@ function FXTradingApp() {
         <Paper
           sx={{
             position: 'fixed',
-            left: 12,
-            right: 12,
-            bottom: 12,
+            left: 0,
+            right: 0,
+            bottom: 0,
             zIndex: theme.zIndex.appBar,
-            borderRadius: 1,
+            borderRadius: 0,
             overflow: 'hidden',
-            bgcolor: 'rgba(11, 23, 40, 0.88)',
+            bgcolor: 'background.paper',
+            borderLeft: 'none',
+            borderRight: 'none',
+            borderBottom: 'none',
           }}
         >
           <BottomNavigation
             showLabels
             value={navigationItems.find((item) => location.pathname.startsWith(item.path))?.path || '/app/rates'}
             onChange={(_, nextValue) => navigate(nextValue)}
-            sx={{ bgcolor: 'transparent' }}
+            sx={{
+              bgcolor: 'transparent',
+              pb: 'env(safe-area-inset-bottom)',
+              '& .MuiBottomNavigationAction-root': { minWidth: 0, px: 0.5 },
+              '& .MuiBottomNavigationAction-label': { fontSize: '0.68rem' },
+            }}
           >
             {navigationItems.slice(0, 5).map((item) => (
-              <BottomNavigationAction key={item.path} label={item.label} value={item.path} icon={renderNavigationIcon(item)} />
+              <BottomNavigationAction key={item.path} label={item.mobileLabel || item.label} value={item.path} icon={renderNavigationIcon(item)} />
             ))}
           </BottomNavigation>
         </Paper>

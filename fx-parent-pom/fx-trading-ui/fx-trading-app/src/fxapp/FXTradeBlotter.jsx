@@ -92,7 +92,7 @@ function FXTradeBlotter() {
             <Box>
               <Typography variant="h4">Trade blotter</Typography>
               <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Review booked trades, booking source, and execution history in one view.
+                Booked trades and execution history.
               </Typography>
             </Box>
             <Button variant="contained" startIcon={<DownloadRoundedIcon />} onClick={exportBlotter}>
@@ -185,7 +185,7 @@ function FXTradeBlotter() {
 
                 <Typography color="text.secondary">
                   {trade.productDetails ? `${trade.productDetails} · ` : ''}
-                  {trade.comments || 'No additional execution comments captured.'}
+                  {trade.comments || 'No comments.'}
                 </Typography>
 
                 <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
@@ -195,7 +195,7 @@ function FXTradeBlotter() {
                 </Stack>
               </Stack>
 
-              <Paper sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
+              <Paper sx={{ p: 1.5, bgcolor: 'background.default' }}>
                 <Stack spacing={1}>
                   <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Trade ID</Typography>

@@ -76,7 +76,7 @@ function FXNotifications() {
             <Box>
               <Typography variant="h4">Notifications</Typography>
               <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Server-generated updates for trade capture, order lifecycle events, and live market commentary.
+                Trade, order, and market updates.
               </Typography>
             </Box>
             <Button variant="contained" startIcon={<SyncRoundedIcon />} onClick={() => refresh?.()}>
@@ -168,7 +168,7 @@ function FXNotifications() {
                   </Stack>
                 </Stack>
 
-                <Paper sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
+                <Paper sx={{ p: 1.5, bgcolor: 'background.default' }}>
                   <Stack spacing={1}>
                     <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                       <Typography color="text.secondary">Received</Typography>
@@ -191,7 +191,7 @@ function FXNotifications() {
           <Paper sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h6">No notifications match this filter</Typography>
             <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-              Adjust the category filter to review trade flow, order activity, or market commentary items.
+              Choose another category.
             </Typography>
           </Paper>
         )}
@@ -201,4 +201,3 @@ function FXNotifications() {
 }
 
 export default FXNotifications;
-

@@ -109,4 +109,15 @@ test('filters the history screen by status', async () => {
   expect(screen.queryByText(/LO-EXP/i)).not.toBeInTheDocument();
 });
 
+test('searches orders by instrument or identifier', async () => {
+  const user = userEvent.setup();
+  renderHistoryScreen();
+
+  await screen.findByText(/LO-ACTIVE/i);
+  await user.type(screen.getByLabelText(/search orders/i), 'USDJPY');
+
+  expect(screen.queryByText(/LO-ACTIVE/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/LO-EXEC/i)).toBeInTheDocument();
+  expect(screen.queryByText(/LO-EXP/i)).not.toBeInTheDocument();
+});
 

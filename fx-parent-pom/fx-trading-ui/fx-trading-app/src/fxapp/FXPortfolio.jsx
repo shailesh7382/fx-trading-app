@@ -53,7 +53,7 @@ function FXPortfolio() {
       <Paper sx={{ p: { xs: 2.25, md: 2.75 } }}>
         <Typography variant="h4">Portfolio overview</Typography>
         <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 760 }}>
-          Exposure is calculated directly from the current blotter so traders can quickly assess gross risk, top currencies, and customer concentration.
+          Exposure from booked trades.
         </Typography>
       </Paper>
 
@@ -113,7 +113,7 @@ function FXPortfolio() {
                 : 0;
 
               return (
-                <Paper key={exposure.currency} sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
+                <Paper key={exposure.currency} sx={{ p: 1.5, bgcolor: 'background.default' }}>
                   <Stack spacing={0.9}>
                     <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                       <Typography variant="subtitle1">{exposure.currency}</Typography>
@@ -140,7 +140,7 @@ function FXPortfolio() {
                 : 0;
 
               return (
-                <Paper key={customer.customer} sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
+                <Paper key={customer.customer} sx={{ p: 1.5, bgcolor: 'background.default' }}>
                   <Stack spacing={0.9}>
                     <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                       <Typography variant="subtitle1">{customer.customer}</Typography>

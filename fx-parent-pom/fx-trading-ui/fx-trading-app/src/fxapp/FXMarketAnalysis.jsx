@@ -43,7 +43,7 @@ function FXMarketAnalysis() {
           <Box>
             <Typography variant="h4">Market analysis</Typography>
             <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 780 }}>
-              Review the largest market moves, widest spreads, and deepest liquidity from the current price feed.
+              Key moves, spreads, and liquidity.
             </Typography>
           </Box>
           <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
@@ -112,7 +112,7 @@ function FXMarketAnalysis() {
               const moveStrength = Math.min(100, Math.abs(rate.bidDelta) * (rate.bid > 20 ? 8000 : 800000));
 
               return (
-                <Paper key={`${rate.ccyPair}-${rate.tenor}`} sx={{ p: 1.5, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
+                <Paper key={`${rate.ccyPair}-${rate.tenor}`} sx={{ p: 1.5, bgcolor: 'background.default' }}>
                   <Stack spacing={1}>
                     <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
                       <Box>
@@ -141,13 +141,13 @@ function FXMarketAnalysis() {
             <Typography variant="h6">Market summary</Typography>
             <Stack spacing={1.25} sx={{ mt: 1.5 }}>
               <Typography color="text.secondary">
-                <strong>{analytics.topMover?.ccyPair || 'Leading pair'}</strong> currently shows the largest directional move.
+                Largest move: <strong>{analytics.topMover?.ccyPair || '—'}</strong>
               </Typography>
               <Typography color="text.secondary">
-                <strong>{analytics.widestSpread?.ccyPair || 'Selected pair'}</strong> currently has the widest spread and may require closer pricing review.
+                Widest spread: <strong>{analytics.widestSpread?.ccyPair || '—'}</strong>
               </Typography>
               <Typography color="text.secondary">
-                <strong>{analytics.deepestLiquidity?.ccyPair || 'Most liquid pair'}</strong> currently shows the largest available size.
+                Most liquidity: <strong>{analytics.deepestLiquidity?.ccyPair || '—'}</strong>
               </Typography>
             </Stack>
           </Paper>

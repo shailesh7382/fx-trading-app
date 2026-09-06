@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   Container,
   InputAdornment,
   Paper,
@@ -11,28 +10,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
-import CandlestickChartRoundedIcon from '@mui/icons-material/CandlestickChartRounded';
-import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import { Navigate, useNavigate } from 'react-router-dom';
 import UserContext from './UserContext';
 import { extractApiMessage } from '../api/client';
 import ecxIcon from '../assets/eCX-icon.svg';
-
-const featureCards = [
-  {
-    title: 'Pricing',
-    description: 'Review rates',
-    icon: <CandlestickChartRoundedIcon color="primary" />,
-  },
-  {
-    title: 'Trade capture',
-    description: 'Review and submit tickets.',
-    icon: <InsightsRoundedIcon color="secondary" />,
-  },
-];
 
 function Login() {
   const navigate = useNavigate();
@@ -55,11 +38,11 @@ function Login() {
     try {
       await login({ username, password });
       setSeverity('success');
-      setMessage('Authentication successful. Redirecting to the application.');
+      setMessage('Signed in.');
       navigate('/app');
     } catch (error) {
       setSeverity('error');
-      setMessage(extractApiMessage(error, 'Authentication failed. You can continue in demo mode if the service is unavailable.'));
+      setMessage(extractApiMessage(error, 'Sign-in failed. Try demo mode if the service is unavailable.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -71,66 +54,19 @@ function Login() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', py: { xs: 3, md: 5 } }}>
-      <Container maxWidth="xl">
-        <Box
-          sx={{
-            display: 'grid',
-            gap: 3,
-            alignItems: 'stretch',
-            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.2fr) minmax(360px, 0.85fr)' },
-          }}
-        >
-          <Paper sx={{ p: { xs: 2.5, md: 4 }, position: 'relative', overflow: 'hidden' }}>
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                background:
-                  'radial-gradient(circle at top left, rgba(78, 242, 194, 0.22), transparent 32%), radial-gradient(circle at bottom right, rgba(110, 168, 255, 0.18), transparent 35%)',
-                pointerEvents: 'none',
-              }}
-            />
-            <Stack spacing={3} sx={{ position: 'relative' }}>
-              <Box>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
-                  <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 52, height: 52, flexShrink: 0 }} />
-                  <Chip icon={<ShieldRoundedIcon />} label="eCX Trading Application" color="primary" />
-                </Stack>
-                <Typography variant="h2" sx={{ maxWidth: 720, fontSize: { xs: '2.3rem', md: '3.5rem' } }}>
-                  eCX FX Trading Platform
-                </Typography>
-                <Typography color="text.secondary" sx={{ maxWidth: 680, mt: 1.5, fontSize: { xs: '1rem', md: '1.1rem' } }}>
-                  Access pricing, booking, blotter, market analysis, and portfolio views from a single trading interface.
-                </Typography>
-              </Box>
-
-              <Box
-                sx={{
-                  display: 'grid',
-                  gap: 1.5,
-                  gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
-                }}
-              >
-                {featureCards.map((card) => (
-                  <Paper key={card.title} sx={{ p: 2, bgcolor: 'rgba(7, 17, 31, 0.55)' }}>
-                    <Stack spacing={1.25}>
-                      {card.icon}
-                      <Typography variant="h6">{card.title}</Typography>
-                      <Typography color="text.secondary">{card.description}</Typography>
-                    </Stack>
-                  </Paper>
-                ))}
-              </Box>
-
-            </Stack>
-          </Paper>
-
-          <Paper sx={{ p: { xs: 2.5, md: 3.5 }, alignSelf: 'center' }}>
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', py: 4 }}>
+      <Container maxWidth="sm">
+          <Paper sx={{ p: { xs: 2.5, sm: 4 } }}>
             <Stack spacing={2.5} component="form" onSubmit={handleLogin}>
               <Box>
-                <Typography variant="h4">Sign in</Typography>
-
+                <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', mb: 2.5 }}>
+                  <Box component="img" src={ecxIcon} alt="eCX" sx={{ width: 40, height: 40 }} />
+                  <Typography variant="subtitle1">eCX Trading</Typography>
+                </Stack>
+                <Typography variant="h4">FX Trading Platform</Typography>
+                <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+                  Sign in to continue.
+                </Typography>
               </Box>
 
               {message ? <Alert severity={severity}>{message}</Alert> : null}
@@ -172,14 +108,12 @@ function Login() {
                 <Button type="submit" variant="contained" size="large" disabled={isSubmitting}>
                   {isSubmitting ? 'Signing in…' : 'Sign in'}
                 </Button>
-                <Button type="button" variant="outlined" size="large" onClick={handleDemoMode}>
+                <Button type="button" variant="text" size="large" onClick={handleDemoMode}>
                   Continue in demo mode
                 </Button>
               </Stack>
-
             </Stack>
           </Paper>
-        </Box>
       </Container>
     </Box>
   );

@@ -1,76 +1,96 @@
 import { alpha, createTheme } from '@mui/material/styles';
 
-const brandBlue = '#005EB8';
-const brandBlueLight = '#2C82D6';
-const brandBlueDark = '#00488D';
-const brandBlueGlow = '#4FA2F0';
-const ink900 = '#030A14';
-const ink850 = '#06111F';
-const ink800 = '#081827';
-const ink750 = '#0B1E30';
-const ink700 = '#10263C';
-const borderTint = alpha('#8FBDE8', 0.16);
+const blue = '#2563A8';
+const blueLight = '#4C82BD';
+const blueDark = '#174A7E';
+const slate900 = '#1F2A37';
+const slate600 = '#617083';
+const canvas = '#F4F7FA';
+const border = '#D9E1EA';
 
 const appTheme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: 'light',
     primary: {
-      main: brandBlue,
-      light: brandBlueLight,
-      dark: brandBlueDark,
-      contrastText: '#f5f7fb',
+      main: blue,
+      light: blueLight,
+      dark: blueDark,
+      contrastText: '#FFFFFF',
     },
     secondary: {
-      main: brandBlueGlow,
+      main: '#6688AD',
+      light: '#8EA8C3',
+      dark: '#496B90',
+      contrastText: '#FFFFFF',
     },
     success: {
-      main: '#2bd576',
+      main: '#3973AD',
+      light: '#EAF2FA',
+      dark: '#245680',
+      contrastText: '#FFFFFF',
     },
     error: {
-      main: '#ff6b81',
+      main: '#355D88',
+      light: '#EDF2F7',
+      dark: '#244766',
+      contrastText: '#FFFFFF',
     },
     warning: {
-      main: '#ffc857',
+      main: '#6B7F95',
+      light: '#F1F4F7',
+      dark: '#4A5D70',
+      contrastText: '#FFFFFF',
+    },
+    info: {
+      main: blueLight,
+      light: '#EDF5FC',
+      dark: blueDark,
+      contrastText: '#FFFFFF',
     },
     background: {
-      default: ink850,
-      paper: ink750,
+      default: canvas,
+      paper: '#FFFFFF',
     },
     text: {
-      primary: '#f5f7fb',
-      secondary: '#A7BED8',
+      primary: slate900,
+      secondary: slate600,
     },
-    divider: borderTint,
+    divider: border,
+    action: {
+      hover: alpha(blue, 0.05),
+      selected: alpha(blue, 0.09),
+      focus: alpha(blue, 0.12),
+    },
   },
   shape: {
-    borderRadius: 4,
+    borderRadius: 6,
   },
   typography: {
     fontFamily: [
       'Inter',
-      'SF Pro Display',
       '-apple-system',
       'BlinkMacSystemFont',
       'Segoe UI',
       'sans-serif',
     ].join(','),
-    h1: { fontWeight: 800 },
-    h2: { fontWeight: 800 },
-    h3: { fontWeight: 700 },
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 700 },
-    h6: { fontWeight: 700 },
+    h1: { fontWeight: 650, letterSpacing: '-0.025em' },
+    h2: { fontWeight: 650, letterSpacing: '-0.025em' },
+    h3: { fontWeight: 650, letterSpacing: '-0.02em' },
+    h4: { fontWeight: 650, letterSpacing: '-0.015em' },
+    h5: { fontWeight: 650 },
+    h6: { fontWeight: 650 },
+    subtitle1: { fontWeight: 600 },
     button: {
       textTransform: 'none',
-      fontWeight: 700,
+      fontWeight: 600,
+      letterSpacing: 0,
     },
   },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
         body: {
-          background:
-            `radial-gradient(circle at top, ${alpha(brandBlue, 0.28)}, transparent 30%), radial-gradient(circle at top right, ${alpha(brandBlueGlow, 0.16)}, transparent 24%), linear-gradient(180deg, ${ink850} 0%, ${ink900} 100%)`,
+          background: canvas,
         },
       },
     },
@@ -78,20 +98,30 @@ const appTheme = createTheme({
       styleOverrides: {
         root: {
           backgroundImage: 'none',
-          backgroundColor: alpha(ink750, 0.9),
-          border: `1px solid ${borderTint}`,
-          backdropFilter: 'blur(18px)',
-          boxShadow: `0 24px 70px ${alpha('#010814', 0.42)}`,
+          backgroundColor: '#FFFFFF',
+          border: `1px solid ${border}`,
+          boxShadow: `0 1px 2px ${alpha(blueDark, 0.04)}`,
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 4,
-          border: `1px solid ${alpha(brandBlueGlow, 0.12)}`,
-          backgroundColor: alpha(ink700, 0.76),
+          borderRadius: 6,
+          border: `1px solid ${border}`,
+          backgroundColor: '#FFFFFF',
           backgroundImage: 'none',
+          boxShadow: 'none',
+        },
+      },
+    },
+    MuiCardContent: {
+      styleOverrides: {
+        root: {
+          padding: 18,
+          '&:last-child': {
+            paddingBottom: 18,
+          },
         },
       },
     },
@@ -101,21 +131,58 @@ const appTheme = createTheme({
       },
       styleOverrides: {
         root: {
-          borderRadius: 4,
-          paddingInline: 16,
+          borderRadius: 6,
+          paddingInline: 14,
         },
         containedPrimary: {
-          backgroundImage: `linear-gradient(135deg, ${brandBlueLight} 0%, ${brandBlue} 65%, ${brandBlueDark} 100%)`,
+          backgroundColor: blue,
+          backgroundImage: 'none',
+          '&:hover': {
+            backgroundColor: blueDark,
+          },
         },
         outlined: {
-          borderColor: alpha(brandBlueGlow, 0.28),
+          borderColor: '#C7D3E0',
+          '&:hover': {
+            borderColor: blueLight,
+            backgroundColor: alpha(blue, 0.04),
+          },
         },
       },
     },
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 4,
+          borderRadius: 6,
+          fontWeight: 500,
+        },
+        filled: {
+          backgroundColor: '#EAF1F8',
+          color: blueDark,
+        },
+      },
+    },
+    MuiAlert: {
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+          boxShadow: 'none',
+        },
+        standardSuccess: {
+          backgroundColor: '#EAF2FA',
+          color: blueDark,
+        },
+        standardError: {
+          backgroundColor: '#EDF2F7',
+          color: '#244766',
+        },
+        standardWarning: {
+          backgroundColor: '#F1F4F7',
+          color: '#4A5D70',
+        },
+        standardInfo: {
+          backgroundColor: '#EDF5FC',
+          color: blueDark,
         },
       },
     },
@@ -128,17 +195,31 @@ const appTheme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          backgroundColor: alpha(ink800, 0.82),
+          backgroundColor: '#FFFFFF',
           '&:hover .MuiOutlinedInput-notchedOutline': {
-            borderColor: alpha(brandBlueGlow, 0.3),
+            borderColor: '#AEBFD0',
           },
           '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-            borderColor: brandBlueLight,
-            boxShadow: `0 0 0 1px ${alpha(brandBlueLight, 0.18)}`,
+            borderColor: blue,
+            boxShadow: `0 0 0 2px ${alpha(blue, 0.08)}`,
           },
         },
         notchedOutline: {
-          borderColor: borderTint,
+          borderColor: '#C7D3E0',
+        },
+      },
+    },
+    MuiLinearProgress: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#E5EBF1',
+        },
+      },
+    },
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          backgroundColor: blueDark,
         },
       },
     },
@@ -146,4 +227,3 @@ const appTheme = createTheme({
 });
 
 export default appTheme;
-
