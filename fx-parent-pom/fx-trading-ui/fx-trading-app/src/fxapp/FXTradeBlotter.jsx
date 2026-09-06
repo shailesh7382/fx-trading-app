@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -12,6 +13,7 @@ import {
 } from '@mui/material';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import { useLocation } from 'react-router-dom';
 import UserContext from './UserContext';
 import { downloadCsv } from '../utils/export';
 import { formatCurrency, formatDateTime, formatNotional } from '../utils/formatters';
@@ -25,6 +27,8 @@ const productTypeLabels = {
 
 function FXTradeBlotter() {
   const { trades } = useContext(UserContext);
+  const location = useLocation();
+  const bookedTradeId = location.state?.bookedTradeId || '';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
@@ -71,6 +75,8 @@ function FXTradeBlotter() {
 
   return (
     <Stack spacing={3}>
+      {bookedTradeId ? <Alert severity="success">Trade {bookedTradeId} booked.</Alert> : null}
+
       <Paper sx={{ p: { xs: 2.25, md: 2.75 } }}>
         <Stack spacing={2}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ justifyContent: 'space-between' }}>
@@ -113,7 +119,15 @@ function FXTradeBlotter() {
 
       <Stack spacing={1.5}>
         {visibleTrades.map((trade) => (
-          <Paper key={trade.id} sx={{ p: { xs: 2, md: 2.25 } }}>
+          <Paper
+            key={trade.id}
+            sx={{
+              p: { xs: 2, md: 2.25 },
+              ...(trade.id === bookedTradeId
+                ? { border: '1px solid', borderColor: 'success.main' }
+                : null),
+            }}
+          >
             <Box
               sx={{
                 display: 'grid',
@@ -133,6 +147,7 @@ function FXTradeBlotter() {
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                    {trade.id === bookedTradeId ? <Chip label="Just booked" color="success" size="small" /> : null}
                     <Chip label={trade.status} color="success" size="small" />
                     <Chip label={trade.bookingMode === 'live' ? 'Live capture' : 'Local fallback'} color={trade.bookingMode === 'live' ? 'primary' : 'warning'} size="small" />
                     <Chip label={trade.executionType === 'LIMIT' ? 'Limit executed' : 'Market ticket'} size="small" variant="outlined" />

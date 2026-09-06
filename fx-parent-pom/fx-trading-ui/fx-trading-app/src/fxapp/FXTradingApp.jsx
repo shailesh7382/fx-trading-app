@@ -221,16 +221,16 @@ function FXTradingApp() {
           </Box>
 
           <Stack direction="row" spacing={{ xs: 0.25, sm: 1 }} sx={{ alignItems: 'center' }}>
+            <Tooltip title="Refresh workspace">
+              <IconButton color="inherit" onClick={() => workspaceData.requestRefresh()}>
+                <SyncRoundedIcon />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Notifications">
               <IconButton color="inherit" onClick={() => navigate('/app/notifications')}>
                 <Badge badgeContent={notificationCount} color="primary" max={99} invisible={!notificationCount}>
                   <NotificationsRoundedIcon />
                 </Badge>
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Refresh workspace">
-              <IconButton color="inherit" onClick={() => workspaceData.requestRefresh()}>
-                <SyncRoundedIcon />
               </IconButton>
             </Tooltip>
             <Chip label={workspaceData.isDemo ? 'Demo' : 'Live'} variant="outlined" size="small" sx={{ display: { xs: 'none', sm: 'inline-flex' } }} />

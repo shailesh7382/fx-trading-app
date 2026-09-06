@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import FXRateGrid from './FXRateGrid';
+import FXTradeBlotter from './FXTradeBlotter';
 import FXTradeBooking from './FXTradeBooking';
 import UserContext from './UserContext';
 import { calculateSettlementDate } from '../utils/formatters';
@@ -39,9 +40,24 @@ function renderBookingFlow() {
     isDemo: true,
   };
 
+  const bookedTrade = {
+    id: 'TRD-1',
+    ccyPair: 'EURUSD',
+    tenor: 'SP',
+    qty: 1000000,
+    price: testRate.ask,
+    direction: 'Buy',
+    dealtCurrency: 'EUR',
+    status: 'BOOKED',
+    bookingMode: 'local',
+    trader: 'demo.trader',
+    bookedAt: '2026-05-26T08:01:00.000Z',
+  };
+
   const userContextValue = {
     userDetails: { username: 'demo.trader' },
-    bookTrade: vi.fn(),
+    trades: [bookedTrade],
+    bookTrade: vi.fn().mockResolvedValue(bookedTrade),
   };
 
   return render(
@@ -51,6 +67,7 @@ function renderBookingFlow() {
           <Route path="/app" element={<TestWorkspaceShell workspaceData={workspaceData} />}>
             <Route path="rates" element={<FXRateGrid />} />
             <Route path="booking" element={<FXTradeBooking />} />
+            <Route path="blotter" element={<FXTradeBlotter />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -103,3 +120,48 @@ test('passes an edited rate-card quantity into booking', async () => {
   expect(screen.getByLabelText(/quantity/i)).toHaveValue(1000000);
 });
 
+test('lands on a bookable ticket straight from a rate-card click', async () => {
+  const user = userEvent.setup();
+  renderBookingFlow();
+
+  await user.click(await screen.findByRole('button', { name: 'Buy' }));
+
+  expect(await screen.findByRole('heading', { name: /fx trade booking/i })).toBeInTheDocument();
+  expect(await screen.findByRole('combobox', { name: /relationship manager/i })).toHaveTextContent(fallbackRelationshipManagers[0].name);
+  expect(screen.getByRole('combobox', { name: /sales/i })).toHaveTextContent(fallbackSales[0].name);
+
+  await user.click(screen.getByRole('button', { name: /book trade/i }));
+
+  expect(screen.queryByText(/complete all booking fields/i)).not.toBeInTheDocument();
+});
+
+test('flips the ticket to a confirmation, then hands off to the blotter', async () => {
+  const user = userEvent.setup();
+  renderBookingFlow();
+
+  await user.click(await screen.findByRole('button', { name: 'Buy' }));
+  await user.click(await screen.findByRole('button', { name: /book trade/i }));
+
+  expect(await screen.findByRole('heading', { name: /trade confirmation/i })).toBeInTheDocument();
+  expect(screen.getByText('Trade TRD-1 booked.')).toBeInTheDocument();
+  expect(screen.getByText('Trade ID')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /book trade/i })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /view in blotter/i }));
+
+  expect(await screen.findByRole('heading', { name: /trade blotter/i })).toBeInTheDocument();
+  expect(screen.getByText('Just booked')).toBeInTheDocument();
+});
+
+test('flips back to a fresh ticket when booking another', async () => {
+  const user = userEvent.setup();
+  renderBookingFlow();
+
+  await user.click(await screen.findByRole('button', { name: 'Buy' }));
+  await user.click(await screen.findByRole('button', { name: /book trade/i }));
+
+  await user.click(await screen.findByRole('button', { name: /book another/i }));
+
+  expect(await screen.findByRole('button', { name: /book trade/i })).toBeEnabled();
+  expect(screen.queryByRole('heading', { name: /trade confirmation/i })).not.toBeInTheDocument();
+});
