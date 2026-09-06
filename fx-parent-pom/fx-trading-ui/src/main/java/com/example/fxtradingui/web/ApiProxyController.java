@@ -10,7 +10,7 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -53,7 +53,7 @@ public class ApiProxyController {
         String targetBaseUrl = requestPath.startsWith("/auth-api") ? authBaseUrl : pricingBaseUrl;
         String rewrittenPath = requestPath.replaceFirst("^/(auth|pricing)-api", "/api");
 
-        UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromHttpUrl(targetBaseUrl)
+        UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUriString(targetBaseUrl)
                 .path(rewrittenPath);
         if (request.getQueryString() != null && !request.getQueryString().isBlank()) {
             uriBuilder.query(request.getQueryString());
@@ -64,10 +64,10 @@ public class ApiProxyController {
 
         copyRequestHeaders(request, requestBuilder);
 
-        HttpMethod httpMethod = HttpMethod.resolve(request.getMethod());
+        HttpMethod httpMethod = HttpMethod.valueOf(request.getMethod());
         byte[] requestBody = readRequestBody(request);
         requestBuilder.method(
-                httpMethod != null ? httpMethod.name() : request.getMethod(),
+                httpMethod.name(),
                 shouldSendBody(request.getMethod()) ? HttpRequest.BodyPublishers.ofByteArray(requestBody) : HttpRequest.BodyPublishers.noBody()
         );
 

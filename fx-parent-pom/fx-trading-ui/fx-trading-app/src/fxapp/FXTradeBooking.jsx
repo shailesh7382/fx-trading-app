@@ -12,12 +12,15 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
+import { Chip, Divider } from '@mui/material';
 import DoneAllRoundedIcon from '@mui/icons-material/DoneAllRounded';
+import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded';
+import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
-import { useLocation, useOutletContext } from 'react-router-dom';
+import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { fetchLookup } from '../api/client';
 import { fallbackCustomers, fallbackRelationshipManagers, fallbackSales } from '../data/mockData';
-import { calculateSettlementDate, formatCurrency, formatNotional, formatRate, getCurrencyCodes } from '../utils/formatters';
+import { calculateSettlementDate, formatCurrency, formatDateTime, formatNotional, formatRate, getCurrencyCodes } from '../utils/formatters';
 import UserContext from './UserContext';
 
 const tenorOptions = ['SP', '1W', '1M', '3M', '6M', '1Y'];
@@ -107,8 +110,8 @@ function buildInitialForm(quote, direction, launchState = {}) {
     direction: direction || 'Buy',
     dealtCurrency: launchState.dealtCurrency || getCurrencyCodes(quote?.ccyPair).base || '',
     customer: launchState.customer || DEFAULT_CUSTOMER_NAME,
-    rm: '',
-    sales: '',
+    rm: launchState.rm || '',
+    sales: launchState.sales || '',
     tradeDate: today,
     settlementDate: initialSettlementDate,
     farTenor: '1M',
@@ -125,6 +128,7 @@ function buildInitialForm(quote, direction, launchState = {}) {
 
 function FXTradeBooking() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { userDetails, bookTrade } = useContext(UserContext);
   const { rates } = useOutletContext();
   const incomingQuote = location.state?.quote;
@@ -149,6 +153,10 @@ function FXTradeBooking() {
   const [message, setMessage] = useState('');
   const [severity, setSeverity] = useState('info');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
+  const [confoInFlow, setConfoInFlow] = useState(false);
+  const flipSceneRef = useRef(null);
+  const hasFlippedRef = useRef(false);
   const [quoteTimeLeft, setQuoteTimeLeft] = useState(incomingQuote ? quoteDurationSeconds : quoteDurationSeconds);
   const [quoteExpiresAt, setQuoteExpiresAt] = useState(Date.now() + quoteDurationSeconds * 1000);
 
@@ -185,7 +193,6 @@ function FXTradeBooking() {
       formData.settlementDate,
       formData.rm,
       formData.sales,
-      formData.comments,
     ];
 
     if (formData.productType === 'SWAP') {
@@ -211,7 +218,6 @@ function FXTradeBooking() {
     return hasRequiredText && hasValidPrimaryNumbers && hasValidSwapNumbers;
   }, [
     formData.ccyPair,
-    formData.comments,
     formData.dealtCurrency,
     formData.direction,
     formData.farPrice,
@@ -260,6 +266,8 @@ function FXTradeBooking() {
       setFormData((current) => ({
         ...current,
         customer: current.customer || customerList[0]?.name || DEFAULT_CUSTOMER_NAME,
+        rm: current.rm || rmList[0]?.name || '',
+        sales: current.sales || salesList[0]?.name || '',
       }));
     }
 
@@ -276,17 +284,21 @@ function FXTradeBooking() {
     }
 
     preserveIncomingValueDateRef.current = Boolean(incomingValueDate);
-    setFormData(
+    setFormData((current) =>
       buildInitialForm(incomingQuote, incomingDirection, {
         dealtCurrency: incomingDealCurrency,
         qty: incomingQty,
         valueDate: incomingValueDate,
+        customer: current.customer,
+        rm: current.rm,
+        sales: current.sales,
       })
     );
     setQuoteExpiresAt(Date.now() + quoteDurationSeconds * 1000);
     setQuoteTimeLeft(quoteDurationSeconds);
     setSeverity('info');
     setMessage('');
+    setConfirmation(null);
   }, [hasIncomingBookingState, incomingDealCurrency, incomingDirection, incomingQty, incomingQuote, incomingValueDate, location.key]);
 
   useEffect(() => {
@@ -450,6 +462,45 @@ function FXTradeBooking() {
     setMessage('Quote refreshed from the latest market snapshot.');
   };
 
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+    const settleDelay = prefersReducedMotion ? 0 : 350;
+    const timeoutId = window.setTimeout(() => setConfoInFlow(Boolean(confirmation)), settleDelay);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [confirmation]);
+
+  useEffect(() => {
+    if (!hasFlippedRef.current) {
+      hasFlippedRef.current = true;
+      return;
+    }
+
+    if (typeof flipSceneRef.current?.scrollIntoView !== 'function') {
+      return;
+    }
+
+    flipSceneRef.current.scrollIntoView({ block: 'start' });
+  }, [confoInFlow]);
+
+  const startNewTicket = () => {
+    setConfirmation(null);
+    setMessage('');
+    setSeverity('info');
+    preserveIncomingValueDateRef.current = false;
+    setFormData((current) =>
+      buildInitialForm(activeRate, current.direction, {
+        productType: current.productType,
+        dealtCurrency: current.dealtCurrency,
+        customer: current.customer,
+        rm: current.rm,
+        sales: current.sales,
+      })
+    );
+    setQuoteExpiresAt(Date.now() + quoteDurationSeconds * 1000);
+    setQuoteTimeLeft(quoteDurationSeconds);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -468,7 +519,7 @@ function FXTradeBooking() {
     setIsSubmitting(true);
 
     try {
-      await bookTrade({
+      const bookedTrade = await bookTrade({
         ccyPair: formData.ccyPair,
         tenor: formData.tenor,
         qty: Number(formData.qty),
@@ -485,10 +536,13 @@ function FXTradeBooking() {
         productDetails: buildProductDetails(formData),
         trader: userDetails?.username || 'demo.trader',
         marketSource: activeRate?.source || 'MANUAL',
-      }).then((bookedTrade) => {
-        setSeverity('success');
-        setMessage(`Trade ${bookedTrade.id} booked.`);
       });
+
+      setMessage('');
+      setConfirmation(bookedTrade);
+    } catch (error) {
+      setSeverity('error');
+      setMessage('Booking failed. Reprice the ticket and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -504,6 +558,26 @@ function FXTradeBooking() {
   };
 
   const quoteProtectionValue = quoteTimerActive ? Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100) : 0;
+
+  const confirmationRows = confirmation
+    ? [
+        ['Trade ID', confirmation.id],
+        ['Product', productTypeLabels[confirmation.productType] || 'FX Spot/Fwd'],
+        ['Instrument', confirmation.ccyPair],
+        ['Direction', `${confirmation.direction} ${confirmation.dealtCurrency}`],
+        ['Tenor', confirmation.tenor],
+        ['Quantity', formatNotional(confirmation.qty)],
+        ['Rate', formatRate(confirmation.price)],
+        ['All-in notional', formatCurrency(Number(confirmation.qty || 0) * Number(confirmation.price || 0))],
+        ['Trade date', confirmation.tradeDate],
+        ['Settlement date', confirmation.settlementDate],
+        ['Customer', confirmation.customer],
+        ['Relationship manager', confirmation.rm],
+        ['Sales', confirmation.sales],
+        ['Trader', confirmation.trader],
+        ['Booked at', formatDateTime(confirmation.bookedAt)],
+      ].filter(([, value]) => String(value ?? '').trim().length > 0)
+    : [];
 
   return (
     <Stack
@@ -523,7 +597,31 @@ function FXTradeBooking() {
           alignItems: 'start',
         }}
       >
-        <Paper component="form" onSubmit={handleSubmit} sx={{ ...bookingPaperSx, p: { xs: 1.75, md: 2.25 } }}>
+        <Box ref={flipSceneRef} sx={{ perspective: '2000px', minWidth: 0, scrollMarginTop: 96 }}>
+          <Box
+            sx={{
+              position: 'relative',
+              transformStyle: 'preserve-3d',
+              transition: 'transform 700ms cubic-bezier(0.22, 0.61, 0.36, 1)',
+              transform: confirmation ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+            }}
+          >
+        <Paper
+          component="form"
+          onSubmit={handleSubmit}
+          aria-hidden={confirmation ? 'true' : undefined}
+          sx={{
+            ...bookingPaperSx,
+            p: { xs: 1.75, md: 2.25 },
+            ...(confoInFlow ? { position: 'absolute', inset: 0, overflow: 'hidden' } : null),
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            visibility: confirmation ? 'hidden' : 'visible',
+            transition: 'visibility 0s linear 350ms',
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        >
           <Stack spacing={2}>
             {message ? <Alert severity={severity}>{message}</Alert> : null}
 
@@ -767,6 +865,75 @@ function FXTradeBooking() {
             </Stack>
           </Stack>
         </Paper>
+
+            <Paper
+              aria-hidden={confirmation ? undefined : 'true'}
+              sx={{
+                ...bookingPaperSx,
+                ...(confoInFlow ? null : { position: 'absolute', inset: 0, overflow: 'auto' }),
+                p: { xs: 1.75, md: 2.25 },
+                borderColor: 'success.main',
+                transform: 'rotateY(180deg)',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
+                visibility: confirmation ? 'visible' : 'hidden',
+                transition: 'visibility 0s linear 350ms',
+                '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+              }}
+            >
+              {confirmation ? (
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+                    <ReceiptLongRoundedIcon color="success" />
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="h5">Trade confirmation</Typography>
+                      <Typography color="text.secondary">Trade {confirmation.id} booked.</Typography>
+                    </Box>
+                    <Chip
+                      size="small"
+                      color={confirmation.bookingMode === 'live' ? 'primary' : 'warning'}
+                      label={confirmation.bookingMode === 'live' ? 'Live capture' : 'Local fallback'}
+                    />
+                  </Stack>
+
+                  <Divider />
+
+                  <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' } }}>
+                    {confirmationRows.map(([label, value]) => (
+                      <Stack key={label} direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+                        <Typography color="text.secondary">{label}</Typography>
+                        <Typography sx={{ fontWeight: 600, textAlign: 'right' }}>{value}</Typography>
+                      </Stack>
+                    ))}
+                  </Box>
+
+                  {confirmation.productDetails ? (
+                    <Typography color="text.secondary">{confirmation.productDetails}</Typography>
+                  ) : null}
+                  {confirmation.comments ? <Typography color="text.secondary">{confirmation.comments}</Typography> : null}
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between' }}>
+                    <Button size="small" variant="outlined" startIcon={<AddCircleOutlineRoundedIcon />} onClick={startNewTicket}>
+                      Book another
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<ReceiptLongRoundedIcon />}
+                      onClick={() => {
+                        window.scrollTo(0, 0);
+                        navigate('/app/blotter', { state: { bookedTradeId: confirmation.id } });
+                      }}
+                      sx={{ minWidth: { sm: 168 } }}
+                    >
+                      View in blotter
+                    </Button>
+                  </Stack>
+                </Stack>
+              ) : null}
+            </Paper>
+          </Box>
+        </Box>
 
         <Stack spacing={2} sx={{ position: { xl: 'sticky' }, top: { xl: 104 } }}>
           <Paper sx={{ ...bookingPaperSx, p: 2 }}>
