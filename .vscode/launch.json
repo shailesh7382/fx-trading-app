@@ -13,17 +13,17 @@
         },
         {
             "type": "java",
-            "name": "FxAuthRsApplication",
+            "name": "FxBackendApplication",
             "request": "launch",
-            "mainClass": "com.example.fxtradingapp.FxAuthRsApplication",
-            "projectName": "fx-auth-rs"
+            "mainClass": "com.example.fx.backend.FxBackendApplication",
+            "projectName": "backend"
         },
         {
             "type": "java",
-            "name": "FxPricingApplication",
+            "name": "FxFrontendApplication",
             "request": "launch",
-            "mainClass": "com.example.FxPricingApplication",
-            "projectName": "fx-pricing-rs"
+            "mainClass": "com.example.fx.frontend.FxFrontendApplication",
+            "projectName": "frontend"
         },
         {
             "type": "java",

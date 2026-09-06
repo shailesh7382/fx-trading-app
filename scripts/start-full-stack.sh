@@ -25,14 +25,12 @@ done
 ensure_ui_dependencies
 ensure_backend_dependencies
 
-start_service auth "$PARENT_POM_DIR/fx-auth-rs" "mvn spring-boot:run" 120
 start_service publisher "$PARENT_POM_DIR/fx-rate-publisher" "mvn spring-boot:run" 120
-start_service pricing "$PARENT_POM_DIR/fx-pricing-rs" "mvn spring-boot:run" 120
-start_service ui "$UI_DIR" "npm run dev -- --host 0.0.0.0 --port 5173" 120
+start_service backend "$PARENT_POM_DIR/backend" "mvn spring-boot:run" 120
+start_service frontend "$UI_DIR" "npm run dev -- --host 0.0.0.0 --port 5173" 120
 
 log_msg INFO "Full FX trading stack started successfully."
-log_msg INFO "Auth service:      http://localhost:8080"
-log_msg INFO "Pricing service:   http://localhost:8081/api/fxprices"
+log_msg INFO "Backend service:   http://localhost:8080/api/fxprices"
 log_msg INFO "Trading UI:        http://localhost:5173"
 log_msg INFO "ActiveMQ broker:   tcp://localhost:61616"
 log_msg INFO "H2 TCP server:     tcp://localhost:9092"

@@ -6,14 +6,13 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
-const defaultDistDir = path.join(repoRoot, 'fx-parent-pom', 'fx-trading-ui', 'fx-trading-app', 'dist');
+const defaultDistDir = path.join(repoRoot, 'fx-parent-pom', 'frontend', 'app', 'dist');
 
 const host = process.env.UI_STATIC_HOST || '0.0.0.0';
 const port = Number.parseInt(process.env.UI_STATIC_PORT || '5173', 10);
 const distDir = path.resolve(process.env.UI_DIST_DIR || defaultDistDir);
 const indexFile = path.join(distDir, 'index.html');
-const authApiTarget = process.env.AUTH_API_PROXY_TARGET || 'http://localhost:8080';
-const pricingApiTarget = process.env.PRICING_API_PROXY_TARGET || 'http://localhost:8081';
+const backendApiTarget = process.env.BACKEND_API_PROXY_TARGET || 'http://localhost:8080';
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -143,13 +142,8 @@ const server = http.createServer(async (request, response) => {
   const requestUrl = new URL(rawUrl, `http://${request.headers.host || `localhost:${port}`}`);
   const decodedPath = decodeURIComponent(requestUrl.pathname);
 
-  if (decodedPath.startsWith('/auth-api/')) {
-    await proxyRequest(request, response, authApiTarget, '/auth-api', '/api');
-    return;
-  }
-
-  if (decodedPath.startsWith('/pricing-api/')) {
-    await proxyRequest(request, response, pricingApiTarget, '/pricing-api', '/api');
+  if (decodedPath.startsWith('/api/')) {
+    await proxyRequest(request, response, backendApiTarget, '/api', '/api');
     return;
   }
 

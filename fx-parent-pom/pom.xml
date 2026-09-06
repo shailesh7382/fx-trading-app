@@ -17,11 +17,10 @@
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <modules>
-        <module>fx-auth-rs</module>
         <module>common-data</module>
         <module>fx-rate-publisher</module>
-        <module>fx-pricing-rs</module>
-        <module>fx-trading-ui</module>
+        <module>backend</module>
+        <module>frontend</module>
     </modules>
 
     <properties>

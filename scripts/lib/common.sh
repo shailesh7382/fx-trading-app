@@ -5,7 +5,7 @@ COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "$COMMON_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 PARENT_POM_DIR="$REPO_ROOT/fx-parent-pom"
-UI_DIR="$PARENT_POM_DIR/fx-trading-ui/fx-trading-app"
+UI_DIR="$PARENT_POM_DIR/frontend/app"
 RUNTIME_DIR="$REPO_ROOT/.runtime"
 PID_DIR="$RUNTIME_DIR/pids"
 META_DIR="$RUNTIME_DIR/meta"
@@ -17,31 +17,29 @@ CURRENT_LOG_DIR_LINK="$LOG_ROOT/current"
 
 mkdir -p "$PID_DIR" "$META_DIR" "$STATE_DIR" "$RUNS_DIR"
 
-SERVICES=(auth publisher pricing ui)
+SERVICES=(publisher backend frontend)
 
 service_display_name() {
   case "$1" in
-    auth) echo "FX Auth RS" ;;
+    backend) echo "FX Backend" ;;
     publisher) echo "FX Rate Publisher" ;;
-    pricing) echo "FX Pricing RS" ;;
-    ui) echo "FX Trading UI" ;;
+    frontend) echo "FX Frontend" ;;
     *) echo "$1" ;;
   esac
 }
 
 service_port() {
   case "$1" in
-    auth) echo "8080" ;;
+    backend) echo "8080" ;;
     publisher) echo "61616" ;;
-    pricing) echo "8081" ;;
-    ui) echo "5173" ;;
+    frontend) echo "5173" ;;
     *) return 1 ;;
   esac
 }
 
 service_additional_ports() {
   case "$1" in
-    auth) echo "9092" ;;
+    backend) echo "9092" ;;
     *) echo "" ;;
   esac
 }
@@ -177,10 +175,9 @@ resolve_service_jar() {
   local candidate
 
   case "$service" in
-    auth) pattern="$PARENT_POM_DIR/fx-auth-rs/target/fx-auth-rs-*.jar" ;;
+    backend) pattern="$PARENT_POM_DIR/backend/target/backend-*.jar" ;;
     publisher) pattern="$PARENT_POM_DIR/fx-rate-publisher/target/fx-rate-publisher-*.jar" ;;
-    pricing) pattern="$PARENT_POM_DIR/fx-pricing-rs/target/fx-pricing-rs-*.jar" ;;
-    ui) pattern="$PARENT_POM_DIR/fx-trading-ui/target/fx-trading-ui-*.jar" ;;
+    frontend) pattern="$PARENT_POM_DIR/frontend/target/frontend-*.jar" ;;
     *) return 1 ;;
   esac
 

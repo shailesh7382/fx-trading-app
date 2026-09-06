@@ -46,7 +46,7 @@ log_step "Packaging all Spring Boot services with Maven..."
 )
 
 log_step "Packaged Spring Boot artifacts:"
-for service in auth publisher pricing ui; do
+for service in publisher backend frontend; do
   jar_path="$(resolve_service_jar "$service" 2>/dev/null || true)"
   if [[ -n "$jar_path" ]]; then
     printf '  - %-10s %s\n' "$service" "$jar_path"

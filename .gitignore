@@ -8,13 +8,9 @@
 /.idea/dictionaries
 /.idea/fx-trading-app.iml
 /.idea/
-/fx-parent-pom/fx-auth-rs/target/
-/fx-parent-pom/fx-rate-publisher/target/
-/fx-parent-pom/common-data/target/
-/fx-parent-pom/fx-pricing-rs/target/
-/fx-parent-pom/fx-trading-ui/fx-trading-app/node_modules/
-/fx-parent-pom/fx-trading-ui/fx-trading-app/build/
-/fx-parent-pom/fx-trading-ui/fx-trading-app/dist/
+target/
+/fx-parent-pom/frontend/app/node_modules/
+/fx-parent-pom/frontend/app/build/
+/fx-parent-pom/frontend/app/dist/
 /.runtime/
 /logs/
-/fx-parent-pom/fx-trading-ui/target/

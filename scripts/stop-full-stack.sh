@@ -11,7 +11,7 @@ MASTER_LOG="${CURRENT_RUN_DIR:+$CURRENT_RUN_DIR/stop.log}"
 
 log_msg INFO "Stopping the FX trading stack..."
 
-for service in ui pricing publisher auth; do
+for service in frontend backend publisher; do
   stop_service "$service"
 done
 

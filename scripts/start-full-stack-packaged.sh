@@ -22,19 +22,16 @@ for service in "${SERVICES[@]}"; do
   fi
 done
 
-auth_jar="$(require_packaged_service_jar auth)"
+backend_jar="$(require_packaged_service_jar backend)"
 publisher_jar="$(require_packaged_service_jar publisher)"
-pricing_jar="$(require_packaged_service_jar pricing)"
-ui_jar="$(require_packaged_service_jar ui)"
+frontend_jar="$(require_packaged_service_jar frontend)"
 
-start_service auth "$PARENT_POM_DIR/fx-auth-rs" "java -jar $(printf '%q' "$auth_jar")" 120
+start_service backend "$PARENT_POM_DIR/backend" "java -jar $(printf '%q' "$backend_jar")" 120
 start_service publisher "$PARENT_POM_DIR/fx-rate-publisher" "java -jar $(printf '%q' "$publisher_jar")" 120
-start_service pricing "$PARENT_POM_DIR/fx-pricing-rs" "java -jar $(printf '%q' "$pricing_jar")" 120
-start_service ui "$PARENT_POM_DIR/fx-trading-ui" "java -jar $(printf '%q' "$ui_jar")" 120
+start_service frontend "$PARENT_POM_DIR/frontend" "java -jar $(printf '%q' "$frontend_jar")" 120
 
 log_msg INFO "Packaged FX trading stack started successfully."
-log_msg INFO "Auth service:      http://localhost:8080"
-log_msg INFO "Pricing service:   http://localhost:8081/api/fxprices"
+log_msg INFO "Backend service:   http://localhost:8080/api/fxprices"
 log_msg INFO "Trading UI:        http://localhost:5173"
 log_msg INFO "ActiveMQ broker:   tcp://localhost:61616"
 log_msg INFO "H2 TCP server:     tcp://localhost:9092"

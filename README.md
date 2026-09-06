@@ -2,10 +2,10 @@
 
 This repository contains a multi-service FX trading demo stack:
 
-- `fx-parent-pom/fx-auth-rs` — authentication service and H2 TCP server
+- `fx-parent-pom/backend` — authentication, pricing API, JMS subscriber, and H2 TCP server
+- `fx-parent-pom/common-data` — market data model shared by the backend and the publisher
 - `fx-parent-pom/fx-rate-publisher` — market data publisher and embedded ActiveMQ broker
-- `fx-parent-pom/fx-pricing-rs` — pricing API and JMS subscriber
-- `fx-parent-pom/fx-trading-ui/fx-trading-app` — Vite-based React trading UI
+- `fx-parent-pom/frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
 
 ## Full-stack startup scripts
 
@@ -14,7 +14,7 @@ The repository now includes managed bash scripts with exhaustive logs, PID track
  ## Packaged Spring Boot full-stack flow
 
 The stack can now be built and run fully as packaged Spring Boot applications, including the frontend.
-The Vite UI bundle is copied into the `fx-trading-ui` Spring Boot jar and served on port `5173`, while `/auth-api/...` and `/pricing-api/...` are proxied to the backend services from that same UI application.
+The Vite UI bundle is copied into the `frontend` Spring Boot jar and served on port `5173`, while `/api/...` is proxied to the backend from that same frontend application.
 
 ### Build and package every service
 
@@ -120,10 +120,9 @@ The `scripts/start-full-stack.sh` script:
 2. creates a timestamped log directory under `logs/runs/`
 3. installs UI dependencies if `node_modules/` is missing
 4. starts services in dependency order:
-   - auth (`8080`, H2 TCP on `9092`)
    - rate publisher / ActiveMQ (`61616`)
-   - pricing (`8081`)
-   - trading UI (`5173`)
+   - backend (`8080`, H2 TCP on `9092`)
+   - frontend (`5173`)
 5. waits for each required port before continuing
 6. stores per-service PID files under `.runtime/`
 
@@ -131,22 +130,21 @@ The `scripts/start-full-stack.sh` script:
 
 `scripts/start-full-stack-prod.sh` performs the same backend startup flow, but it also:
 
-1. runs `npm run build` inside `fx-parent-pom/fx-trading-ui/fx-trading-app`
+1. runs `npm run build` inside `fx-parent-pom/frontend/app`
 2. serves the built files from `dist/` using `scripts/serve-ui-dist.mjs`
 3. keeps SPA route fallback behavior by returning `index.html` for unknown frontend paths
 4. writes UI build and HTTP access logs into the current run directory
 
-## Same-origin API access for auth and pricing
+## Same-origin API access
 
-The UI now uses same-origin API base paths by default:
+The UI uses a same-origin API base path by default:
 
-- `/auth-api/...` → proxied to `http://localhost:8080/api/...`
-- `/pricing-api/...` → proxied to `http://localhost:8081/api/...`
+- `/api/...` → proxied to `http://localhost:8080/api/...`
 
 This avoids browser cross-origin API calls from the UI and helps prevent confusing network entries like `strict-origin-when-cross-origin` when using the local frontend.
 
-- In dev mode, the Vite dev server proxies these paths.
-- In production-oriented mode, `scripts/serve-ui-dist.mjs` proxies the same paths.
+- In dev mode, the Vite dev server proxies this path.
+- In production-oriented mode, `scripts/serve-ui-dist.mjs` proxies the same path.
 
 ## Log layout
 
