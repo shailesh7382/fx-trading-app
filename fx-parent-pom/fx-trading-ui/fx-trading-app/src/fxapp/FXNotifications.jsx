@@ -2,9 +2,6 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
-  Card,
-  CardContent,
   Chip,
   LinearProgress,
   MenuItem,
@@ -13,7 +10,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
 import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
 import { useOutletContext } from 'react-router-dom';
 import { formatDateTime, formatRelativeTime } from '../utils/formatters';
@@ -41,23 +37,12 @@ function FXNotifications() {
     isLoading,
     error,
     lastUpdated,
-    refresh,
   } = useOutletContext();
   const [categoryFilter, setCategoryFilter] = useState('ALL');
 
   const categoryOptions = useMemo(
     () => ['ALL', 'TRADE', 'ORDER_EXECUTION', 'ORDER_STATUS', 'MARKET_COMMENTARY'],
     []
-  );
-
-  const metrics = useMemo(
-    () => ({
-      trades: notifications.filter((notification) => notification.category === 'TRADE').length,
-      executions: notifications.filter((notification) => notification.category === 'ORDER_EXECUTION').length,
-      orderStatus: notifications.filter((notification) => notification.category === 'ORDER_STATUS').length,
-      commentary: notifications.filter((notification) => notification.category === 'MARKET_COMMENTARY').length,
-    }),
-    [notifications]
   );
 
   const visibleNotifications = useMemo(() => {
@@ -79,9 +64,6 @@ function FXNotifications() {
                 Trade, order, and market updates.
               </Typography>
             </Box>
-            <Button variant="contained" startIcon={<SyncRoundedIcon />} onClick={() => refresh?.()}>
-              Refresh feed
-            </Button>
           </Stack>
 
           {isLoading ? <LinearProgress /> : null}
@@ -91,26 +73,6 @@ function FXNotifications() {
             <Chip icon={<NotificationsRoundedIcon />} label={`${notificationCount} in feed`} color="primary" />
             <Chip label={`Last workspace update ${formatRelativeTime(lastUpdated)}`} variant="outlined" />
           </Stack>
-
-          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' } }}>
-            {[
-              { label: 'Trade bookings', value: metrics.trades },
-              { label: 'Order executions', value: metrics.executions },
-              { label: 'Order status', value: metrics.orderStatus },
-              { label: 'Market commentary', value: metrics.commentary },
-            ].map((metric) => (
-              <Card key={metric.label}>
-                <CardContent>
-                  <Typography color="text.secondary" variant="body2">
-                    {metric.label}
-                  </Typography>
-                  <Typography variant="h4" sx={{ mt: 0.8 }}>
-                    {metric.value}
-                  </Typography>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
 
           <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: '300px 1fr' } }}>
             <TextField

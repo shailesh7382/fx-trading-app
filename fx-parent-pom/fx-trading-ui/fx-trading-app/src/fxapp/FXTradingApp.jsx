@@ -228,8 +228,8 @@ function FXTradingApp() {
                 </Badge>
               </IconButton>
             </Tooltip>
-            <Tooltip title="Refresh live market data">
-              <IconButton color="inherit" onClick={workspaceData.refresh} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+            <Tooltip title="Refresh workspace">
+              <IconButton color="inherit" onClick={() => workspaceData.requestRefresh()}>
                 <SyncRoundedIcon />
               </IconButton>
             </Tooltip>

@@ -38,6 +38,7 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
   const [notifications, setNotifications] = useState([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
+  const [manualRefreshToken, setManualRefreshToken] = useState(0);
 
   const refresh = useCallback(async ({ forceRates = true } = {}) => {
     const tasks = [fetchLimitOrders(), fetchNotifications({ limit: 12 })];
@@ -90,6 +91,11 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
     setIsLoading(false);
   }, []);
 
+  const requestRefresh = useCallback(async () => {
+    setManualRefreshToken((currentToken) => currentToken + 1);
+    await refresh({ forceRates: true });
+  }, [refresh]);
+
   useEffect(() => {
     refresh({ forceRates: true });
   }, [refresh]);
@@ -125,7 +131,9 @@ export default function useWorkspaceData({ autoRefresh = true, intervalMs = 5000
     notifications,
     notificationCount,
     lastUpdated,
+    manualRefreshToken,
     refresh,
+    requestRefresh,
   };
 }
 
