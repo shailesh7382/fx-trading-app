@@ -11,7 +11,7 @@ MASTER_LOG="${CURRENT_RUN_DIR:+$CURRENT_RUN_DIR/stop.log}"
 
 log_msg INFO "Stopping the FX trading stack..."
 
-for service in frontend backend publisher; do
+for service in frontend backend simulator; do
   stop_service "$service"
 done
 
@@ -21,5 +21,4 @@ rm -f "$CURRENT_RUN_ID_FILE"
 if [[ -L "$CURRENT_LOG_DIR_LINK" ]]; then
   rm -f "$CURRENT_LOG_DIR_LINK"
 fi
-
 

@@ -19,13 +19,13 @@ done
 ensure_ui_dependencies
 ensure_backend_dependencies
 build_ui_production
+start_service simulator "$PARENT_POM_DIR/simulator" "mvn spring-boot:run" 120
 start_service backend "$PARENT_POM_DIR/backend" "mvn spring-boot:run" 120
-start_service publisher "$PARENT_POM_DIR/fx-rate-publisher" "mvn spring-boot:run" 120
 start_service frontend "$REPO_ROOT" "env UI_STATIC_HOST=0.0.0.0 UI_STATIC_PORT=5173 UI_DIST_DIR='$UI_DIR/dist' node scripts/serve-ui-dist.mjs" 120
 log_msg INFO "Production-oriented FX trading stack started successfully."
+log_msg INFO "Simulator API:       http://localhost:8090/swagger-ui.html"
 log_msg INFO "Backend service:     http://localhost:8080/api/fxprices"
 log_msg INFO "Built trading UI:    http://localhost:5173"
-log_msg INFO "ActiveMQ broker:     tcp://localhost:61616"
 log_msg INFO "H2 TCP server:       tcp://localhost:9092"
 log_msg INFO "Use scripts/status-full-stack.sh to inspect running services."
 log_msg INFO "Use scripts/tail-logs.sh to follow the current run logs."

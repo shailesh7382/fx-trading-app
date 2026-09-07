@@ -46,7 +46,7 @@ log_step "Packaging all Spring Boot services with Maven..."
 )
 
 log_step "Packaged Spring Boot artifacts:"
-for service in publisher backend frontend; do
+for service in simulator backend frontend; do
   jar_path="$(resolve_service_jar "$service" 2>/dev/null || true)"
   if [[ -n "$jar_path" ]]; then
     printf '  - %-10s %s\n' "$service" "$jar_path"
@@ -54,4 +54,3 @@ for service in publisher backend frontend; do
 done
 
 log_step "Full-stack build and packaging completed successfully."
-

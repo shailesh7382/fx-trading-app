@@ -1,0 +1,333 @@
+openapi: 3.0.3
+info:
+  title: FX Simulator API
+  version: 1.0.0
+  description: |
+    Contract for requesting executable FX prices and booking simulated trades.
+    A quote is single-use, expires at `expiresAt`, and can be booked at either its bid or ask.
+servers:
+  - url: http://localhost:8090
+    description: Local simulator
+tags:
+  - name: Pricing
+    description: Request and inspect executable FX quotes.
+  - name: Booking
+    description: Book a previously issued quote and inspect the resulting trade.
+paths:
+  /api/v1/pricing/quotes:
+    post:
+      tags: [Pricing]
+      operationId: requestPrice
+      summary: Request an executable FX quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PriceRequest'
+      responses:
+        '201':
+          description: Executable quote created.
+          headers:
+            Location:
+              description: URI of the created quote.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceQuote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /api/v1/pricing/quotes/{quoteId}:
+    get:
+      tags: [Pricing]
+      operationId: getPriceQuote
+      summary: Get the current state of a quote
+      parameters:
+        - $ref: '#/components/parameters/QuoteId'
+      responses:
+        '200':
+          description: Quote found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceQuote'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/bookings:
+    post:
+      tags: [Booking]
+      operationId: bookTrade
+      summary: Book a simulated trade from an active quote
+      description: |
+        `clientRequestId` makes booking idempotent. Repeating the same request returns
+        the original trade; reusing the id with different booking details returns a conflict.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+      responses:
+        '201':
+          description: Trade booked.
+          headers:
+            Location:
+              description: URI of the booked trade.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookedTrade'
+        '200':
+          description: The original trade returned for an idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookedTrade'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+  /api/v1/bookings/{tradeId}:
+    get:
+      tags: [Booking]
+      operationId: getBooking
+      summary: Get a booked trade
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          description: Simulator trade identifier.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Trade found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookedTrade'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  parameters:
+    QuoteId:
+      name: quoteId
+      in: path
+      required: true
+      description: Simulator quote identifier.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: The request is malformed or violates the contract.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+    UnprocessableEntity:
+      description: The request is valid but the instrument is unsupported.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+    NotFound:
+      description: The requested quote or trade does not exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+    Conflict:
+      description: The quote was already booked or the idempotency key was reused inconsistently.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+    Gone:
+      description: The quote has expired and can no longer be booked.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+  schemas:
+    PriceRequest:
+      type: object
+      additionalProperties: false
+      required: [currencyPair, amount, tenor]
+      properties:
+        currencyPair:
+          type: string
+          pattern: '^[A-Z]{6}$'
+          example: EURUSD
+          description: Six-character ISO currency pair, with base currency first.
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          example: 1000000
+          description: Amount of the base currency.
+        tenor:
+          $ref: '#/components/schemas/Tenor'
+    BookingRequest:
+      type: object
+      additionalProperties: false
+      required: [quoteId, side, clientRequestId]
+      properties:
+        quoteId:
+          type: string
+          format: uuid
+        side:
+          $ref: '#/components/schemas/Side'
+        clientRequestId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[A-Za-z0-9._:-]+$'
+          example: backend-order-20260908-0001
+          description: Caller-generated idempotency key for this booking.
+    PriceQuote:
+      type: object
+      additionalProperties: false
+      required:
+        - quoteId
+        - currencyPair
+        - amount
+        - tenor
+        - bid
+        - ask
+        - valueDate
+        - quotedAt
+        - expiresAt
+        - status
+      properties:
+        quoteId:
+          type: string
+          format: uuid
+        currencyPair:
+          type: string
+          pattern: '^[A-Z]{6}$'
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        tenor:
+          $ref: '#/components/schemas/Tenor'
+        bid:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Rate at which the simulator buys the base currency.
+        ask:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Rate at which the simulator sells the base currency.
+        valueDate:
+          type: string
+          format: date
+        quotedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/QuoteStatus'
+    BookedTrade:
+      type: object
+      additionalProperties: false
+      required:
+        - tradeId
+        - clientRequestId
+        - quoteId
+        - currencyPair
+        - amount
+        - tenor
+        - side
+        - executionRate
+        - valueDate
+        - bookedAt
+        - status
+      properties:
+        tradeId:
+          type: string
+          format: uuid
+        clientRequestId:
+          type: string
+        quoteId:
+          type: string
+          format: uuid
+        currencyPair:
+          type: string
+          pattern: '^[A-Z]{6}$'
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        tenor:
+          $ref: '#/components/schemas/Tenor'
+        side:
+          $ref: '#/components/schemas/Side'
+        executionRate:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        valueDate:
+          type: string
+          format: date
+        bookedAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/TradeStatus'
+    ApiProblem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, detail, errorCode, timestamp]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: urn:problem:fx-simulator:quote-expired
+        title:
+          type: string
+          example: Quote expired
+        status:
+          type: integer
+          format: int32
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        errorCode:
+          type: string
+          example: QUOTE_EXPIRED
+        timestamp:
+          type: string
+          format: date-time
+    Tenor:
+      type: string
+      enum: [SPOT, ONE_WEEK, ONE_MONTH, THREE_MONTHS, SIX_MONTHS, ONE_YEAR]
+    Side:
+      type: string
+      description: BUY buys the base currency; SELL sells the base currency.
+      enum: [BUY, SELL]
+    QuoteStatus:
+      type: string
+      enum: [ACTIVE, BOOKED, EXPIRED]
+    TradeStatus:
+      type: string
+      enum: [BOOKED]

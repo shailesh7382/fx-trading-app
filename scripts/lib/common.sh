@@ -17,12 +17,12 @@ CURRENT_LOG_DIR_LINK="$LOG_ROOT/current"
 
 mkdir -p "$PID_DIR" "$META_DIR" "$STATE_DIR" "$RUNS_DIR"
 
-SERVICES=(publisher backend frontend)
+SERVICES=(simulator backend frontend)
 
 service_display_name() {
   case "$1" in
     backend) echo "FX Backend" ;;
-    publisher) echo "FX Rate Publisher" ;;
+    simulator) echo "FX Simulator" ;;
     frontend) echo "FX Frontend" ;;
     *) echo "$1" ;;
   esac
@@ -31,7 +31,7 @@ service_display_name() {
 service_port() {
   case "$1" in
     backend) echo "8080" ;;
-    publisher) echo "61616" ;;
+    simulator) echo "8090" ;;
     frontend) echo "5173" ;;
     *) return 1 ;;
   esac
@@ -176,7 +176,7 @@ resolve_service_jar() {
 
   case "$service" in
     backend) pattern="$PARENT_POM_DIR/backend/target/backend-*.jar" ;;
-    publisher) pattern="$PARENT_POM_DIR/fx-rate-publisher/target/fx-rate-publisher-*.jar" ;;
+    simulator) pattern="$PARENT_POM_DIR/simulator/target/simulator-*.jar" ;;
     frontend) pattern="$PARENT_POM_DIR/frontend/target/frontend-*.jar" ;;
     *) return 1 ;;
   esac
@@ -508,4 +508,3 @@ NPM_VERSION: $(npm -v 2>/dev/null || true)
 ================================================================
 EOF
 }
-

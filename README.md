@@ -2,10 +2,27 @@
 
 This repository contains a multi-service FX trading demo stack:
 
+- `fx-parent-pom/open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
+- `fx-parent-pom/simulator` — executable FX pricing and idempotent trade-booking simulator
 - `fx-parent-pom/backend` — authentication, pricing API, JMS subscriber, and H2 TCP server
-- `fx-parent-pom/common-data` — market data model shared by the backend and the publisher
-- `fx-parent-pom/fx-rate-publisher` — market data publisher and embedded ActiveMQ broker
+- `fx-parent-pom/common-data` — legacy market data model still used by the unchanged backend
 - `fx-parent-pom/frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
+
+The backend has intentionally not been connected to the simulator yet. It continues to use its existing
+JMS integration until the backend migration is implemented separately.
+
+## Simulator API
+
+The simulator runs on port `8090` and exposes the authored contract at:
+
+- Swagger UI: `http://localhost:8090/swagger-ui.html`
+- OpenAPI YAML: `http://localhost:8090/openapi/fx-simulator-api.yaml`
+- Pricing: `POST /api/v1/pricing/quotes` and `GET /api/v1/pricing/quotes/{quoteId}`
+- Booking: `POST /api/v1/bookings` and `GET /api/v1/bookings/{tradeId}`
+
+The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
+during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under
+`target/generated-sources`. The generated client interfaces are ready for the later backend integration.
 
 ## Full-stack startup scripts
 
@@ -120,7 +137,7 @@ The `scripts/start-full-stack.sh` script:
 2. creates a timestamped log directory under `logs/runs/`
 3. installs UI dependencies if `node_modules/` is missing
 4. starts services in dependency order:
-   - rate publisher / ActiveMQ (`61616`)
+   - FX simulator (`8090`)
    - backend (`8080`, H2 TCP on `9092`)
    - frontend (`5173`)
 5. waits for each required port before continuing
@@ -152,10 +169,9 @@ Each start run creates a fresh directory like:
 
 - `logs/runs/<timestamp>/startup.log`
 - `logs/runs/<timestamp>/auth.log`
-- `logs/runs/<timestamp>/publisher.log`
+- `logs/runs/<timestamp>/simulator.log`
 - `logs/runs/<timestamp>/pricing.log`
 - `logs/runs/<timestamp>/ui.log`
 - `logs/runs/<timestamp>/ui-bootstrap.log` (only when `npm install` runs)
 
 `logs/current` points to the latest run.
-
