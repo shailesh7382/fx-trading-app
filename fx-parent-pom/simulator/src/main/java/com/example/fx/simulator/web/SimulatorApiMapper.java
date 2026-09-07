@@ -1,10 +1,14 @@
 package com.example.fx.simulator.web;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import com.example.fx.simulator.api.model.*;
 import com.example.fx.simulator.domain.TradingModels.*;
+// Both packages define a LimitOrder; the single-type import makes the unqualified name the domain record.
+import com.example.fx.simulator.domain.TradingModels.LimitOrder;
 import com.example.fx.simulator.service.SimulatorApiException;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +34,34 @@ public class SimulatorApiMapper {
 
     public RequestContext context(BookingRequest request) {
         return new RequestContext(request.getRequestId(), request.getChannel(), request.getSegment(), request.getCustomerId());
+    }
+
+    public LimitOrderCommand limitOrderCommand(LimitOrderRequest request) {
+        RequestContext context = new RequestContext(request.getRequestId(), request.getChannel(),
+                request.getSegment(), request.getCustomerId());
+        PricingCommand pricing = new PricingCommand(context, request.getCurrencyPair(), request.getQuantity(),
+                request.getQuantityCurrency(), request.getTenor(), request.getSide());
+        return new LimitOrderCommand(pricing, request.getLimitPrice(), request.getTimeInForce(),
+                request.getExpiresAt(), callbackUrl(request.getCallbackUrl()));
+    }
+
+    public com.example.fx.simulator.api.model.LimitOrder limitOrder(LimitOrder order, RequestContext context) {
+        LimitOrderCommand command = order.command();
+        PricingCommand pricing = command.pricing();
+        Identity identity = context.identity();
+        return new com.example.fx.simulator.api.model.LimitOrder().requestId(context.requestId())
+                .channel(identity.channel()).segment(identity.segment()).customerId(identity.customerId())
+                .originalRequestId(command.context().requestId()).responseId(UUID.randomUUID()).responseAt(now())
+                .orderId(order.orderId()).currencyPair(pricing.currencyPair()).quantity(pricing.quantity())
+                .quantityCurrency(pricing.quantityCurrency()).tenor(pricing.tenor()).side(pricing.side())
+                .limitPrice(command.limitPrice()).timeInForce(command.timeInForce()).expiresAt(command.expiresAt())
+                .status(order.status()).placedAt(order.placedAt())
+                .lastEvaluatedAt(order.lastEvaluatedAt()).lastEvaluatedPrice(order.lastEvaluatedPrice())
+                .closedAt(order.closedAt())
+                .tradeId(order.trade() == null ? null : order.trade().tradeId())
+                .executedPrice(order.trade() == null ? null : order.trade().price().clientPrice())
+                .callbackUrl(command.callbackUrl().toString())
+                .callbackStatus(order.callbackStatus()).callbackAttempts(order.callbackAttempts());
     }
 
     public PriceQuote quote(Quote quote, RequestContext context) {
@@ -77,6 +109,15 @@ public class SimulatorApiMapper {
                 .sellCurrency(settlement.sellCurrency()).sellQuantity(settlement.sellQuantity())
                 .spotDate(quote.dates().spotDate()).valueDate(quote.dates().valueDate())
                 .bookedAt(trade.bookedAt()).status(TradeStatus.BOOKED);
+    }
+
+    /** The contract's pattern rejects most junk; anything that still fails to parse is the caller's error, not a fault. */
+    private URI callbackUrl(String callbackUrl) {
+        try {
+            return new URI(callbackUrl);
+        } catch (URISyntaxException exception) {
+            throw SimulatorApiException.invalidLimitOrder("callbackUrl is not a valid URL.");
+        }
     }
 
     private OffsetDateTime now() { return OffsetDateTime.now(clock); }

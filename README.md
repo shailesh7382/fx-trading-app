@@ -3,7 +3,7 @@
 This repository contains a multi-service FX trading demo stack:
 
 - `fx-parent-pom/open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
-- `fx-parent-pom/simulator` — executable FX pricing and idempotent trade-booking simulator
+- `fx-parent-pom/simulator` — executable FX pricing, idempotent trade booking, and resting limit orders
 - `fx-parent-pom/backend` — authentication, pricing API, JMS subscriber, legacy market data model, and H2 TCP server
 - `fx-parent-pom/frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
 
@@ -18,11 +18,40 @@ The simulator runs on port `8090` and exposes the authored contract at:
 - OpenAPI YAML: `http://localhost:8090/openapi/fx-simulator-api.yaml`
 - Pricing: `POST /api/v1/pricing/quotes` and `GET /api/v1/pricing/quotes/{quoteId}`
 - Booking: `POST /api/v1/bookings` and `GET /api/v1/bookings/{tradeId}`
+- Limit orders: `POST /api/v1/limit-orders`, `GET /api/v1/limit-orders/{orderId}`, `DELETE /api/v1/limit-orders/{orderId}`
 
 Pricing supports `ONE_WAY` requests with flat `side`, `coverPrice`, `clientPrice`, and `swapPoints` response
 fields. `TWO_WAY` requests return flat `buy*` and `sell*` price fields. Every request carries channel, segment,
 customer, and request identification; responses echo that context and add a response ID and timestamp. Forward
 prices are generated from tenor-specific currency curves.
+
+## Limit orders and their callback
+
+A limit order carries the same identification as every other request (`requestId`, `channel`, `segment`,
+`customerId`) plus an `Idempotency-Key` header scoped by customer, exactly like booking. It rests until the
+executable client price reaches its limit, its `GOOD_TILL_TIME` expiry passes, or it is cancelled. Working
+orders are re-priced on a fixed interval, so a fill takes the price quoted at the evaluation that triggered
+it, never the limit itself. A triggered order books a trade that is retrievable at `/api/v1/bookings/{tradeId}`.
+
+When an order becomes `TRIGGERED` or `EXPIRED`, the simulator POSTs a `LimitOrderEvent` to the order's
+`callbackUrl` — the contract declares this as an OpenAPI `callbacks` operation on the placement endpoint.
+Delivery is at least once with exponential backoff, and `eventId` is stable across retries, so receivers
+dedupe on it. Delivery runs separately from evaluation, so an unreachable receiver never delays other orders;
+the order itself reports `callbackStatus` and `callbackAttempts`. Cancellations produce no event, because the
+caller already has the outcome in the cancel response.
+
+The simulator only posts to a configured prefix, so a caller cannot aim it at an arbitrary host; a URL
+outside the allowlist is rejected with 422. The defaults live in `simulator/src/main/resources/application.properties`:
+
+```properties
+simulator.limit-orders.evaluation-interval=250ms
+simulator.limit-orders.callback.allowed-prefixes[0]=http://localhost:8080/
+simulator.limit-orders.callback.max-attempts=5
+simulator.limit-orders.callback.initial-backoff=1s
+```
+
+The default prefix points at the backend's origin, but the backend does not expose a receiving endpoint yet —
+that arrives with the backend migration described above.
 
 The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
 during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under

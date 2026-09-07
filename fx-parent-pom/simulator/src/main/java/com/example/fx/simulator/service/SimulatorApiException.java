@@ -97,6 +97,37 @@ public final class SimulatorApiException extends RuntimeException {
         );
     }
 
+    public static SimulatorApiException orderNotFound(Object orderId) {
+        return new SimulatorApiException(
+                HttpStatus.NOT_FOUND,
+                "ORDER_NOT_FOUND",
+                "Order not found",
+                "Limit order " + orderId + " does not exist."
+        );
+    }
+
+    public static SimulatorApiException orderNotWorking(Object orderId, Object status) {
+        return new SimulatorApiException(
+                HttpStatus.CONFLICT,
+                "ORDER_NOT_WORKING",
+                "Order not working",
+                "Limit order " + orderId + " is " + status + " and can no longer be cancelled."
+        );
+    }
+
+    public static SimulatorApiException invalidLimitOrder(String detail) {
+        return new SimulatorApiException(HttpStatus.BAD_REQUEST, "INVALID_LIMIT_ORDER", "Invalid limit order", detail);
+    }
+
+    public static SimulatorApiException callbackUrlNotAllowed(String callbackUrl) {
+        return new SimulatorApiException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "CALLBACK_URL_NOT_ALLOWED",
+                "Callback URL not allowed",
+                "The simulator is not configured to deliver events to " + callbackUrl + "."
+        );
+    }
+
     public HttpStatus getStatus() {
         return status;
     }

@@ -3,10 +3,7 @@ package com.example.fx.simulator.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.UUID;
 import java.util.function.Function;
 import com.example.fx.simulator.api.model.QuoteStatus;
@@ -85,6 +82,16 @@ public class SimulatorStateStore {
         return new BookingResult(trade, true);
     }
 
+    /** A triggered limit order books outside the quote/idempotency flow, but its trade is retrieved the same way. */
+    public synchronized void addTrade(Quote quote, Trade trade) {
+        purge();
+        quotes.requireCapacity();
+        trades.requireCapacity();
+        Instant bookedAt = trade.bookedAt().toInstant();
+        quotes.put(quote.quoteId(), quote, quote.expiresAt().toInstant().plus(properties.quoteRetention()));
+        trades.put(trade.tradeId(), trade, bookedAt.plus(properties.tradeRetention()));
+    }
+
     @Scheduled(fixedDelayString = "${simulator.state.cleanup-interval:60s}")
     public synchronized void purge() {
         Instant now = clock.instant();
@@ -101,28 +108,4 @@ public class SimulatorStateStore {
     private record IdempotencyScope(String customerId, String key) {}
     private record Fingerprint(Identity identity, UUID quoteId, Side side) {}
     private record StoredBooking(Fingerprint fingerprint, Trade trade) {}
-    private record Expiry<K>(K key, Instant at) {}
-
-    /** Expiry queue makes cleanup proportional to expired entries, rather than scanning the full store per request. */
-    private static final class RetainedMap<K, V> {
-        private final int capacity;
-        private final Map<K, V> entries = new HashMap<>();
-        private final PriorityQueue<Expiry<K>> expiries = new PriorityQueue<>(Comparator.comparing(Expiry::at));
-        RetainedMap(int capacity) { this.capacity = capacity; }
-        int size() { return entries.size(); }
-        V get(K key) { return entries.get(key); }
-        void requireCapacity() {
-            if (entries.size() >= capacity) throw SimulatorApiException.capacityExceeded();
-        }
-        void put(K key, V value, Instant expiresAt) {
-            entries.put(key, value);
-            expiries.add(new Expiry<>(key, expiresAt));
-        }
-        void replace(K key, V value) { entries.replace(key, value); }
-        void purge(Instant now) {
-            while (!expiries.isEmpty() && !now.isBefore(expiries.peek().at())) {
-                entries.remove(expiries.remove().key());
-            }
-        }
-    }
 }

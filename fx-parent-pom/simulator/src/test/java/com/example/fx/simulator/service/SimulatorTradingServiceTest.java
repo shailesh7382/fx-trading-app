@@ -1,12 +1,9 @@
 package com.example.fx.simulator.service;
 
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Random;
 
@@ -68,33 +65,5 @@ class SimulatorTradingServiceTest {
         assertThat(spotPoints).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(oneMonthPoints).isPositive();
         assertThat(oneYearPoints).isGreaterThan(oneMonthPoints);
-    }
-
-    /** The quote TTL is only observable through the clock the service and its state store share. */
-    private static final class MutableClock extends Clock {
-        private Instant instant;
-
-        private MutableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void advance(Duration amount) {
-            instant = instant.plus(amount);
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            throw new UnsupportedOperationException();
-        }
     }
 }
