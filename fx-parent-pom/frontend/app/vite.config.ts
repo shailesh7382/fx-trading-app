@@ -27,5 +27,15 @@ export default defineConfig({
     setupFiles: './tests/setup.ts',
     css: true,
     include: ['tests/**/*.test.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      reportsDirectory: './coverage',
+      // Measure the app, not the harness. Everything matching `include` is counted
+      // whether or not a test imports it, so an untested screen reports 0% rather
+      // than dropping out of the report.
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/main.tsx', 'src/vite-env.d.ts', 'src/shared/types/**'],
+    },
   },
 });

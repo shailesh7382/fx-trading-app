@@ -12,5 +12,6 @@ target/
 /fx-parent-pom/frontend/app/node_modules/
 /fx-parent-pom/frontend/app/build/
 /fx-parent-pom/frontend/app/dist/
+/fx-parent-pom/frontend/app/coverage/
 /.runtime/
 /logs/
