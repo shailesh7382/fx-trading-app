@@ -12,7 +12,17 @@
 
     <artifactId>simulator</artifactId>
 
+    <properties>
+        <swagger-request-validator.version>2.46.1</swagger-request-validator.version>
+    </properties>
+
     <dependencies>
+        <dependency>
+            <groupId>com.atlassian.oai</groupId>
+            <artifactId>swagger-request-validator-core</artifactId>
+            <version>${swagger-request-validator.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>com.example</groupId>
             <artifactId>open-api-spec</artifactId>

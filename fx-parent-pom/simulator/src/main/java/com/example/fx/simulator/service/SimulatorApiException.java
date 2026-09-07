@@ -34,6 +34,15 @@ public final class SimulatorApiException extends RuntimeException {
         );
     }
 
+    public static SimulatorApiException invalidRequest(String detail) {
+        return new SimulatorApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", detail);
+    }
+
+    public static SimulatorApiException capacityExceeded() {
+        return new SimulatorApiException(HttpStatus.SERVICE_UNAVAILABLE, "CAPACITY_EXCEEDED",
+                "Simulator capacity exceeded", "Retained state is full; retry later with the same idempotency key.");
+    }
+
     public static SimulatorApiException quoteNotFound(Object quoteId) {
         return new SimulatorApiException(
                 HttpStatus.NOT_FOUND,
@@ -84,7 +93,7 @@ public final class SimulatorApiException extends RuntimeException {
                 HttpStatus.CONFLICT,
                 "IDEMPOTENCY_CONFLICT",
                 "Idempotency conflict",
-                "requestId " + requestId + " was already used for different booking details."
+                "Idempotency-Key " + requestId + " was already used for different booking details."
         );
     }
 

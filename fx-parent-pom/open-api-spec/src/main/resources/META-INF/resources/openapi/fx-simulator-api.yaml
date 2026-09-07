@@ -1,11 +1,17 @@
 openapi: 3.0.3
 info:
   title: FX Simulator API
-  version: 1.1.0
+  version: 2.0.0
   description: |
     Contract for requesting executable FX prices and booking simulated trades.
     A one-way request returns one flat executable price; a two-way request returns flat BUY and SELL fields.
-    Quotes are single-use and expire at `expiresAt`.
+    Quotes are single-use and expire at `expiresAt`. All rates are quote currency per base currency.
+    Identification is business context for this local simulator, not authentication.
+    POST bodies carry requestId/channel/segment/customerId. GET operations carry the equivalent X-* headers.
+    Responses echo the current request context; originalRequestId identifies the resource's creation request.
+    State and idempotency are bounded, in-memory, single-instance, and reset on restart.
+    Default quote retention is five minutes after expiry; trade and idempotency retention are 24 hours.
+    Capacity exhaustion returns 503 without evicting retained records or consuming a quote.
 servers:
   - url: http://localhost:8090
     description: Local simulator
@@ -34,7 +40,7 @@ paths:
               description: URI of the created quote.
               schema:
                 type: string
-                format: uri
+                format: uri-reference
           content:
             application/json:
               schema:
@@ -43,6 +49,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/CapacityExceeded'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/pricing/quotes/{quoteId}:
     get:
       tags: [Pricing]
@@ -50,6 +60,10 @@ paths:
       summary: Get the current state of a quote
       parameters:
         - $ref: '#/components/parameters/QuoteId'
+        - $ref: '#/components/parameters/RequestIdHeader'
+        - $ref: '#/components/parameters/ChannelHeader'
+        - $ref: '#/components/parameters/SegmentHeader'
+        - $ref: '#/components/parameters/CustomerIdHeader'
       responses:
         '200':
           description: Quote found.
@@ -59,14 +73,23 @@ paths:
                 $ref: '#/components/schemas/PriceQuote'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/bookings:
     post:
       tags: [Booking]
       operationId: bookTrade
       summary: Book a simulated trade from an active quote
       description: |
-        `requestId` makes booking idempotent. Repeating the same request returns the
-        original trade; reusing the id with different booking details returns a conflict.
+        Idempotency-Key is required and scoped by customerId, independently of requestId.
+        Replays may use a new requestId and receive fresh responseId/responseAt, with the original trade unchanged.
+        Within retention, changing quoteId, side, channel, or segment for the same key returns 409.
+        Booking and lookup must match the quote/trade's channel, segment, and customerId; mismatches return 404.
+        After idempotency retention elapses the key may be reused. No guarantees survive a simulator restart.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -81,7 +104,7 @@ paths:
               description: URI of the booked trade.
               schema:
                 type: string
-                format: uri
+                format: uri-reference
           content:
             application/json:
               schema:
@@ -100,12 +123,20 @@ paths:
           $ref: '#/components/responses/Conflict'
         '410':
           $ref: '#/components/responses/Gone'
+        '503':
+          $ref: '#/components/responses/CapacityExceeded'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/bookings/{tradeId}:
     get:
       tags: [Booking]
       operationId: getBooking
       summary: Get a booked trade
       parameters:
+        - $ref: '#/components/parameters/RequestIdHeader'
+        - $ref: '#/components/parameters/ChannelHeader'
+        - $ref: '#/components/parameters/SegmentHeader'
+        - $ref: '#/components/parameters/CustomerIdHeader'
         - name: tradeId
           in: path
           required: true
@@ -122,6 +153,10 @@ paths:
                 $ref: '#/components/schemas/BookedTrade'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   parameters:
     QuoteId:
@@ -132,6 +167,36 @@ components:
       schema:
         type: string
         format: uuid
+    RequestIdHeader:
+      name: X-Request-Id
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/RequestId'
+    ChannelHeader:
+      name: X-Channel
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/Channel'
+    SegmentHeader:
+      name: X-Segment
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/Segment'
+    CustomerIdHeader:
+      name: X-Customer-Id
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/CustomerId'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/RequestId'
   responses:
     BadRequest:
       description: The request is malformed or violates the contract.
@@ -163,338 +228,378 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ApiProblem'
+    CapacityExceeded:
+      description: Retained state is at capacity. Retry later with the same booking idempotency key.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+    Problem:
+      description: Request could not be completed; available request context is echoed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
   schemas:
     PriceRequest:
+      oneOf:
+        - $ref: '#/components/schemas/OneWayPriceRequest'
+        - $ref: '#/components/schemas/TwoWayPriceRequest'
+      discriminator:
+        propertyName: quoteType
+        mapping:
+          ONE_WAY: '#/components/schemas/OneWayPriceRequest'
+          TWO_WAY: '#/components/schemas/TwoWayPriceRequest'
+    OneWayPriceRequest:
       type: object
       additionalProperties: false
-      description: |
-        For `ONE_WAY`, `side` is required. For `TWO_WAY`, `side` must be omitted and the
-        response contains flat BUY and SELL price fields. Side is expressed from the customer's
-        perspective for `quantityCurrency`.
-      required:
-        - requestId
-        - channel
-        - segment
-        - customerId
-        - currencyPair
-        - quantity
-        - quantityCurrency
-        - tenor
-        - quoteType
+      required: [requestId, channel, segment, customerId, currencyPair, quantity, quantityCurrency, tenor, side, quoteType]
       properties:
         requestId:
-          type: string
-          minLength: 1
-          maxLength: 100
-          pattern: '^[A-Za-z0-9._:-]+$'
-          example: price-request-20260908-0001
+          $ref: '#/components/schemas/RequestId'
         channel:
-          type: string
-          minLength: 1
-          maxLength: 20
-          example: WEB
+          $ref: '#/components/schemas/Channel'
         segment:
-          type: string
-          minLength: 1
-          maxLength: 1
-          example: C
+          $ref: '#/components/schemas/Segment'
         customerId:
-          type: string
-          minLength: 10
-          maxLength: 10
-          example: '0000123456'
+          $ref: '#/components/schemas/CustomerId'
         currencyPair:
-          type: string
-          pattern: '^[A-Z]{6}$'
-          example: EURUSD
-          description: Six-character ISO currency pair, with base currency first.
+          $ref: '#/components/schemas/CurrencyPair'
         quantity:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          example: 1000000
-          description: Quantity of `quantityCurrency` to buy or sell.
+          $ref: '#/components/schemas/Quantity'
         quantityCurrency:
+          $ref: '#/components/schemas/Currency'
+        tenor:
+          $ref: '#/components/schemas/Tenor'
+        side:
+          $ref: '#/components/schemas/Side'
+        quoteType:
           type: string
-          pattern: '^[A-Z]{3}$'
-          example: EUR
-          description: Currency whose quantity and side are specified; must be one leg of currencyPair.
+          pattern: '^ONE_WAY$'
+          description: Must be ONE_WAY; selects this contract variant.
+    TwoWayPriceRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, channel, segment, customerId, currencyPair, quantity, quantityCurrency, tenor, quoteType]
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        channel:
+          $ref: '#/components/schemas/Channel'
+        segment:
+          $ref: '#/components/schemas/Segment'
+        customerId:
+          $ref: '#/components/schemas/CustomerId'
+        currencyPair:
+          $ref: '#/components/schemas/CurrencyPair'
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+        quantityCurrency:
+          $ref: '#/components/schemas/Currency'
         tenor:
           $ref: '#/components/schemas/Tenor'
         quoteType:
-          $ref: '#/components/schemas/QuoteType'
-        side:
-          $ref: '#/components/schemas/Side'
+          type: string
+          pattern: '^TWO_WAY$'
+          description: Must be TWO_WAY; selects this contract variant.
     BookingRequest:
       type: object
       additionalProperties: false
       required: [requestId, channel, segment, customerId, quoteId, side]
       properties:
         requestId:
-          type: string
-          minLength: 1
-          maxLength: 100
-          pattern: '^[A-Za-z0-9._:-]+$'
-          example: booking-request-20260908-0001
-          description: Caller-generated idempotency key for this booking.
+          $ref: '#/components/schemas/RequestId'
         channel:
-          type: string
-          minLength: 1
-          maxLength: 20
-          example: WEB
+          $ref: '#/components/schemas/Channel'
         segment:
-          type: string
-          minLength: 1
-          maxLength: 1
-          example: C
+          $ref: '#/components/schemas/Segment'
         customerId:
-          type: string
-          minLength: 10
-          maxLength: 10
-          example: '0000123456'
+          $ref: '#/components/schemas/CustomerId'
         quoteId:
-          type: string
-          format: uuid
+          $ref: '#/components/schemas/Identifier'
         side:
           $ref: '#/components/schemas/Side'
     PriceQuote:
+      oneOf:
+        - $ref: '#/components/schemas/OneWayPriceQuote'
+        - $ref: '#/components/schemas/TwoWayPriceQuote'
+      discriminator:
+        propertyName: quoteType
+        mapping:
+          ONE_WAY: '#/components/schemas/OneWayPriceQuote'
+          TWO_WAY: '#/components/schemas/TwoWayPriceQuote'
+    OneWayPriceQuote:
       type: object
       additionalProperties: false
-      required:
-        - requestId
-        - responseId
-        - responseAt
-        - channel
-        - segment
-        - customerId
-        - quoteId
-        - currencyPair
-        - quantity
-        - quantityCurrency
-        - tenor
-        - quoteType
-        - valueDate
-        - quotedAt
-        - expiresAt
-        - status
+      required: [requestId, channel, segment, customerId, originalRequestId, responseId, responseAt, quoteId, currencyPair, quantity, quantityCurrency, tenor, spotDate, valueDate, quotedAt, expiresAt, status, side, coverPrice, clientPrice, swapPoints, quoteType]
       properties:
         requestId:
-          type: string
-          minLength: 1
-          maxLength: 100
-          pattern: '^[A-Za-z0-9._:-]+$'
-          description: Echo of the pricing request identifier.
-        responseId:
-          type: string
-          format: uuid
-        responseAt:
-          type: string
-          format: date-time
+          $ref: '#/components/schemas/RequestId'
         channel:
-          type: string
-          minLength: 1
-          maxLength: 20
+          $ref: '#/components/schemas/Channel'
         segment:
-          type: string
-          minLength: 1
-          maxLength: 1
+          $ref: '#/components/schemas/Segment'
         customerId:
-          type: string
-          minLength: 10
-          maxLength: 10
+          $ref: '#/components/schemas/CustomerId'
+        originalRequestId:
+          $ref: '#/components/schemas/RequestId'
+        responseId:
+          $ref: '#/components/schemas/Identifier'
+        responseAt:
+          $ref: '#/components/schemas/Timestamp'
         quoteId:
-          type: string
-          format: uuid
+          $ref: '#/components/schemas/Identifier'
         currencyPair:
-          type: string
-          pattern: '^[A-Z]{6}$'
+          $ref: '#/components/schemas/CurrencyPair'
         quantity:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
+          $ref: '#/components/schemas/Quantity'
         quantityCurrency:
-          type: string
-          pattern: '^[A-Z]{3}$'
+          $ref: '#/components/schemas/Currency'
         tenor:
           $ref: '#/components/schemas/Tenor'
-        quoteType:
-          $ref: '#/components/schemas/QuoteType'
+        spotDate:
+          $ref: '#/components/schemas/Date'
+        valueDate:
+          $ref: '#/components/schemas/Date'
+        quotedAt:
+          $ref: '#/components/schemas/Timestamp'
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+        status:
+          $ref: '#/components/schemas/QuoteStatus'
         side:
           $ref: '#/components/schemas/Side'
         coverPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: ONE_WAY simulated all-in market price before customer markup.
+          $ref: '#/components/schemas/Rate'
         clientPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: ONE_WAY executable all-in price offered to the customer.
+          $ref: '#/components/schemas/Rate'
         swapPoints:
-          type: number
-          description: ONE_WAY forward points in outright-rate units.
-        buyCoverPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: TWO_WAY cover price for buying quantityCurrency.
-        buyClientPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: TWO_WAY client price for buying quantityCurrency.
-        buySwapPoints:
-          type: number
-          description: TWO_WAY forward points for buying quantityCurrency.
-        sellCoverPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: TWO_WAY cover price for selling quantityCurrency.
-        sellClientPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: TWO_WAY client price for selling quantityCurrency.
-        sellSwapPoints:
-          type: number
-          description: TWO_WAY forward points for selling quantityCurrency.
+          $ref: '#/components/schemas/SwapPoints'
+        quoteType:
+          type: string
+          pattern: '^ONE_WAY$'
+          description: Must be ONE_WAY; selects this contract variant.
+    TwoWayPriceQuote:
+      type: object
+      additionalProperties: false
+      required: [requestId, channel, segment, customerId, originalRequestId, responseId, responseAt, quoteId, currencyPair, quantity, quantityCurrency, tenor, spotDate, valueDate, quotedAt, expiresAt, status, buyCoverPrice, buyClientPrice, buySwapPoints, sellCoverPrice, sellClientPrice, sellSwapPoints, quoteType]
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        channel:
+          $ref: '#/components/schemas/Channel'
+        segment:
+          $ref: '#/components/schemas/Segment'
+        customerId:
+          $ref: '#/components/schemas/CustomerId'
+        originalRequestId:
+          $ref: '#/components/schemas/RequestId'
+        responseId:
+          $ref: '#/components/schemas/Identifier'
+        responseAt:
+          $ref: '#/components/schemas/Timestamp'
+        quoteId:
+          $ref: '#/components/schemas/Identifier'
+        currencyPair:
+          $ref: '#/components/schemas/CurrencyPair'
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+        quantityCurrency:
+          $ref: '#/components/schemas/Currency'
+        tenor:
+          $ref: '#/components/schemas/Tenor'
+        spotDate:
+          $ref: '#/components/schemas/Date'
         valueDate:
-          type: string
-          format: date
+          $ref: '#/components/schemas/Date'
         quotedAt:
-          type: string
-          format: date-time
+          $ref: '#/components/schemas/Timestamp'
         expiresAt:
-          type: string
-          format: date-time
+          $ref: '#/components/schemas/Timestamp'
         status:
           $ref: '#/components/schemas/QuoteStatus'
+        buyCoverPrice:
+          $ref: '#/components/schemas/Rate'
+        buyClientPrice:
+          $ref: '#/components/schemas/Rate'
+        buySwapPoints:
+          $ref: '#/components/schemas/SwapPoints'
+        sellCoverPrice:
+          $ref: '#/components/schemas/Rate'
+        sellClientPrice:
+          $ref: '#/components/schemas/Rate'
+        sellSwapPoints:
+          $ref: '#/components/schemas/SwapPoints'
+        quoteType:
+          type: string
+          pattern: '^TWO_WAY$'
+          description: Must be TWO_WAY; selects this contract variant.
     BookedTrade:
       type: object
       additionalProperties: false
-      required:
-        - requestId
-        - responseId
-        - responseAt
-        - channel
-        - segment
-        - customerId
-        - tradeId
-        - quoteId
-        - currencyPair
-        - quantity
-        - quantityCurrency
-        - tenor
-        - side
-        - coverPrice
-        - clientPrice
-        - swapPoints
-        - valueDate
-        - bookedAt
-        - status
+      required: [requestId, channel, segment, customerId, originalRequestId, responseId, responseAt, tradeId, quoteId, currencyPair, quantity, quantityCurrency, tenor, side, coverPrice, clientPrice, swapPoints, buyCurrency, buyQuantity, sellCurrency, sellQuantity, spotDate, valueDate, bookedAt, status]
       properties:
         requestId:
-          type: string
-          minLength: 1
-          maxLength: 100
-          pattern: '^[A-Za-z0-9._:-]+$'
-          description: Echo of the booking request identifier.
-        responseId:
-          type: string
-          format: uuid
-        responseAt:
-          type: string
-          format: date-time
+          $ref: '#/components/schemas/RequestId'
         channel:
-          type: string
-          minLength: 1
-          maxLength: 20
+          $ref: '#/components/schemas/Channel'
         segment:
-          type: string
-          minLength: 1
-          maxLength: 1
+          $ref: '#/components/schemas/Segment'
         customerId:
-          type: string
-          minLength: 10
-          maxLength: 10
+          $ref: '#/components/schemas/CustomerId'
+        originalRequestId:
+          $ref: '#/components/schemas/RequestId'
+        responseId:
+          $ref: '#/components/schemas/Identifier'
+        responseAt:
+          $ref: '#/components/schemas/Timestamp'
         tradeId:
-          type: string
-          format: uuid
+          $ref: '#/components/schemas/Identifier'
         quoteId:
-          type: string
-          format: uuid
+          $ref: '#/components/schemas/Identifier'
         currencyPair:
-          type: string
-          pattern: '^[A-Z]{6}$'
+          $ref: '#/components/schemas/CurrencyPair'
         quantity:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
+          $ref: '#/components/schemas/Quantity'
         quantityCurrency:
-          type: string
-          pattern: '^[A-Z]{3}$'
+          $ref: '#/components/schemas/Currency'
         tenor:
           $ref: '#/components/schemas/Tenor'
         side:
           $ref: '#/components/schemas/Side'
         coverPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
+          $ref: '#/components/schemas/Rate'
         clientPrice:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          description: Executed customer price.
+          $ref: '#/components/schemas/Rate'
         swapPoints:
-          type: number
+          $ref: '#/components/schemas/SwapPoints'
+        buyCurrency:
+          $ref: '#/components/schemas/Currency'
+        buyQuantity:
+          $ref: '#/components/schemas/SettlementQuantity'
+        sellCurrency:
+          $ref: '#/components/schemas/Currency'
+        sellQuantity:
+          $ref: '#/components/schemas/SettlementQuantity'
+        spotDate:
+          $ref: '#/components/schemas/Date'
         valueDate:
-          type: string
-          format: date
+          $ref: '#/components/schemas/Date'
         bookedAt:
-          type: string
-          format: date-time
+          $ref: '#/components/schemas/Timestamp'
         status:
           $ref: '#/components/schemas/TradeStatus'
     ApiProblem:
       type: object
       additionalProperties: false
+      description: Identification fields are echoed when available, including invalid supplied strings.
       required: [responseId, responseAt, type, title, status, detail, errorCode]
       properties:
         responseId:
-          type: string
-          format: uuid
+          $ref: '#/components/schemas/Identifier'
         responseAt:
+          $ref: '#/components/schemas/Timestamp'
+        requestId:
           type: string
-          format: date-time
+        channel:
+          type: string
+        segment:
+          type: string
+        customerId:
+          type: string
         type:
           type: string
           format: uri
-          example: urn:problem:fx-simulator:quote-expired
         title:
           type: string
-          example: Quote expired
         status:
           type: integer
-          format: int32
           minimum: 400
           maximum: 599
         detail:
           type: string
         errorCode:
           type: string
-          example: QUOTE_EXPIRED
+    RequestId:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: '^[A-Za-z0-9._:-]+$'
+    Channel:
+      type: string
+      minLength: 1
+      maxLength: 20
+      pattern: '^\S+$'
+      example: WEB
+    Segment:
+      type: string
+      minLength: 1
+      maxLength: 1
+      pattern: '^\S$'
+      example: C
+    CustomerId:
+      type: string
+      minLength: 10
+      maxLength: 10
+      pattern: '^\S{10}$'
+      example: '0000123456'
+    CurrencyPair:
+      type: string
+      pattern: '^[A-Z]{6}$'
+      example: EURUSD
+      description: Base currency followed by quote currency. All prices use this orientation.
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+    Quantity:
+      type: number
+      minimum: 0
+      exclusiveMinimum: true
+      maximum: 1000000000000
+      description: |
+        Requested amount in quantityCurrency, which must be one leg of currencyPair.
+        Must fit currency minor units (JPY zero decimals; other supported currencies two).
+        Preserved exactly at booking. Notional size tiers use spot-equivalent base-currency quantity.
+    SettlementQuantity:
+      type: number
+      minimum: 0
+      exclusiveMinimum: true
+      description: |
+        Positive customer settlement amount. The requested leg is preserved exactly.
+        The counter leg is calculated using clientPrice (quote currency per base currency):
+        multiply a base amount or divide a quote amount, then round once HALF_UP to the
+        counter currency's minor units (JPY zero decimals; other supported currencies two).
+        Requests whose counter amount rounds to zero are rejected during pricing.
+    Rate:
+      type: number
+      minimum: 0
+      exclusiveMinimum: true
+      description: |
+        All-in outright rate in quote-currency units per one base-currency unit.
+        Cover price is before markup; client price is the executable customer rate.
+        Rounded HALF_UP to three decimals for JPY quote currency, five otherwise.
+    SwapPoints:
+      type: number
+      description: Forward minus spot mid in outright-rate units, not pips; zero for SPOT.
+    Identifier:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    Date:
+      type: string
+      format: date
     Tenor:
       type: string
       enum: [SPOT, ONE_WEEK, ONE_MONTH, THREE_MONTHS, SIX_MONTHS, ONE_YEAR]
-    QuoteType:
-      type: string
-      enum: [ONE_WAY, TWO_WAY]
+      description: |
+        UTC trade date; configurable pair spot lag (default T+2, USDCAD T+1), weekends and
+        configured currency holidays excluded. Forward dates preserve month-end and use
+        modified following. Synthetic currency curves accrue ACT/365F over spotDate to valueDate.
     Side:
       type: string
-      description: BUY or SELL `quantityCurrency` from the customer's perspective.
+      description: BUY or SELL quantityCurrency from the customer's perspective.
       enum: [BUY, SELL]
     QuoteStatus:
       type: string

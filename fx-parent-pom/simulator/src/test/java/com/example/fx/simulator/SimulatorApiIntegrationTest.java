@@ -1,267 +1,241 @@
 package com.example.fx.simulator;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import com.example.fx.simulator.api.model.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockMvcClientHttpRequestFactory;
 import org.springframework.test.web.servlet.MockMvc;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.support.RestClientAdapter;
+import org.springframework.web.service.invoker.HttpServiceProxyFactory;
+import static org.assertj.core.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 class SimulatorApiIntegrationTest {
+    @Autowired MockMvc mvc;
+    @Autowired ObjectMapper mapper;
 
-    @Autowired
-    private MockMvc mockMvc;
+    ObjectNode price(String type, String currency, String side) {
+        ObjectNode request = mapper.createObjectNode().put("requestId", UUID.randomUUID().toString())
+                .put("channel", "WEB").put("segment", "C").put("customerId", "0000123456")
+                .put("currencyPair", "EURUSD").put("quantity", 1000000).put("quantityCurrency", currency)
+                .put("tenor", "ONE_MONTH").put("quoteType", type);
+        if (side != null) request.put("side", side);
+        return request;
+    }
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    MockHttpServletRequestBuilder pricePost(ObjectNode input) throws Exception {
+        return post("/api/v1/pricing/quotes").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(input));
+    }
 
-    @Test
-    void requestsAndBooksOneWayPriceIdempotently() throws Exception {
-        String quoteResponse = mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("pricing-request-1", "EUR", "BUY")))
-                .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
-                .andExpect(jsonPath("$.requestId").value("pricing-request-1"))
-                .andExpect(jsonPath("$.channel").value("WEB"))
-                .andExpect(jsonPath("$.segment").value("C"))
-                .andExpect(jsonPath("$.customerId").value("0000123456"))
-                .andExpect(jsonPath("$.responseId").isNotEmpty())
-                .andExpect(jsonPath("$.responseAt").isNotEmpty())
-                .andExpect(jsonPath("$.quotedAt").isNotEmpty())
-                .andExpect(jsonPath("$.quoteType").value("ONE_WAY"))
-                .andExpect(jsonPath("$.prices").doesNotExist())
-                .andExpect(jsonPath("$.side").value("BUY"))
-                .andExpect(jsonPath("$.coverPrice").isNumber())
-                .andExpect(jsonPath("$.clientPrice").isNumber())
-                .andExpect(jsonPath("$.swapPoints").isNumber())
-                .andExpect(jsonPath("$.buyCoverPrice").doesNotExist())
-                .andExpect(jsonPath("$.sellCoverPrice").doesNotExist())
-                .andExpect(jsonPath("$.status").value("ACTIVE"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+    MockHttpServletRequestBuilder identifiedGet(String path, String requestId) {
+        return get(path).header("X-Request-Id", requestId).header("X-Channel", "WEB")
+                .header("X-Segment", "C").header("X-Customer-Id", "0000123456");
+    }
 
-        JsonNode quote = objectMapper.readTree(quoteResponse);
-        String quoteId = quote.required("quoteId").asText();
-        String bookingJson = bookingRequest("booking-request-1", quoteId, "BUY");
+    ObjectNode booking(JsonNode quote, String requestId, String side) {
+        return mapper.createObjectNode().put("requestId", requestId).put("channel", "WEB")
+                .put("segment", "C").put("customerId", "0000123456")
+                .put("quoteId", quote.path("quoteId").asText()).put("side", side);
+    }
 
-        String bookingResponse = mockMvc.perform(post("/api/v1/bookings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(bookingJson))
-                .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
-                .andExpect(jsonPath("$.requestId").value("booking-request-1"))
-                .andExpect(jsonPath("$.channel").value("WEB"))
-                .andExpect(jsonPath("$.segment").value("C"))
-                .andExpect(jsonPath("$.customerId").value("0000123456"))
-                .andExpect(jsonPath("$.responseId").isNotEmpty())
-                .andExpect(jsonPath("$.responseAt").isNotEmpty())
-                .andExpect(jsonPath("$.bookedAt").isNotEmpty())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+    MockHttpServletRequestBuilder bookingPost(ObjectNode body, String key) throws Exception {
+        return post("/api/v1/bookings").header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(body));
+    }
 
-        JsonNode trade = objectMapper.readTree(bookingResponse);
-        assertThat(trade.required("clientPrice").decimalValue())
-                .isEqualByComparingTo(quote.required("clientPrice").decimalValue());
-        assertThat(trade.required("coverPrice").decimalValue())
-                .isEqualByComparingTo(quote.required("coverPrice").decimalValue());
-        assertThat(trade.required("swapPoints").decimalValue())
-                .isEqualByComparingTo(quote.required("swapPoints").decimalValue());
-        assertThat(trade.required("status").asText()).isEqualTo("BOOKED");
-
-        String replayResponse = mockMvc.perform(post("/api/v1/bookings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(bookingJson))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        JsonNode replay = objectMapper.readTree(replayResponse);
-        assertThat(replay.required("tradeId")).isEqualTo(trade.required("tradeId"));
-        assertThat(replay.required("bookedAt")).isEqualTo(trade.required("bookedAt"));
-        assertThat(replay.required("responseId")).isNotEqualTo(trade.required("responseId"));
-
-        mockMvc.perform(get("/api/v1/pricing/quotes/{quoteId}", quoteId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("BOOKED"));
-
-        mockMvc.perform(get("/api/v1/bookings/{tradeId}", trade.required("tradeId").asText()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requestId").value("booking-request-1"));
+    JsonNode checked(MockHttpServletRequestBuilder request, int expected) throws Exception {
+        var result = mvc.perform(request).andExpect(status().is(expected)).andReturn();
+        ContractAssertions.validResponse(result);
+        return mapper.readTree(result.getResponse().getContentAsString());
     }
 
     @Test
-    void returnsBuyAndSellPricesForTwoWayRequest() throws Exception {
-        String response = mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "requestId": "two-way-request-1",
-                                  "channel": "VOICE",
-                                  "segment": "I",
-                                  "customerId": "0000654321",
-                                  "currencyPair": "EURUSD",
-                                  "quantity": 5000000,
-                                  "quantityCurrency": "USD",
-                                  "tenor": "SIX_MONTHS",
-                                  "quoteType": "TWO_WAY"
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.quoteType").value("TWO_WAY"))
-                .andExpect(jsonPath("$.prices").doesNotExist())
-                .andExpect(jsonPath("$.side").doesNotExist())
-                .andExpect(jsonPath("$.coverPrice").doesNotExist())
-                .andExpect(jsonPath("$.clientPrice").doesNotExist())
-                .andExpect(jsonPath("$.swapPoints").doesNotExist())
-                .andExpect(jsonPath("$.buyCoverPrice").isNumber())
-                .andExpect(jsonPath("$.buyClientPrice").isNumber())
-                .andExpect(jsonPath("$.buySwapPoints").isNumber())
-                .andExpect(jsonPath("$.sellCoverPrice").isNumber())
-                .andExpect(jsonPath("$.sellClientPrice").isNumber())
-                .andExpect(jsonPath("$.sellSwapPoints").isNumber())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+    void createsBooksReplaysAndRetrievesWithCurrentRequestContext() throws Exception {
+        ObjectNode input = price("ONE_WAY", "EUR", "BUY");
+        JsonNode quote = checked(pricePost(input), 201);
+        assertThat(quote.path("requestId")).isEqualTo(input.path("requestId"));
+        assertThat(quote.path("originalRequestId")).isEqualTo(input.path("requestId"));
+        assertThat(quote.has("prices")).isFalse();
+        assertThat(quote.has("buyCoverPrice")).isFalse();
+        assertThat(quote.path("side").asText()).isEqualTo("BUY");
 
-        JsonNode quote = objectMapper.readTree(response);
-        assertThat(quote.required("buyClientPrice").decimalValue())
-                .isLessThan(quote.required("buyCoverPrice").decimalValue());
-        assertThat(quote.required("sellClientPrice").decimalValue())
-                .isGreaterThan(quote.required("sellCoverPrice").decimalValue());
-        assertThat(quote.required("buySwapPoints"))
-                .isEqualTo(quote.required("sellSwapPoints"));
+        String key = UUID.randomUUID().toString();
+        JsonNode trade = checked(bookingPost(booking(quote, "book-original", "BUY"), key), 201);
+        assertThat(trade.path("buyCurrency").asText()).isEqualTo("EUR");
+        assertThat(trade.path("buyQuantity").decimalValue()).isEqualByComparingTo("1000000");
+        assertThat(trade.path("sellQuantity").decimalValue()).isEqualByComparingTo(
+                quote.path("clientPrice").decimalValue().multiply(new BigDecimal("1000000")).setScale(2, RoundingMode.HALF_UP));
+        assertThat(trade.path("coverPrice")).isEqualTo(quote.path("coverPrice"));
+
+        JsonNode replay = checked(bookingPost(booking(quote, "book-retry", "BUY"), key), 200);
+        assertThat(replay.path("requestId").asText()).isEqualTo("book-retry");
+        assertThat(replay.path("originalRequestId").asText()).isEqualTo("book-original");
+        assertThat(replay.path("responseId")).isNotEqualTo(trade.path("responseId"));
+        for (String field : new String[]{"tradeId", "bookedAt", "clientPrice", "buyQuantity", "sellQuantity"}) {
+            assertThat(replay.path(field)).isEqualTo(trade.path(field));
+        }
+        JsonNode fetched = checked(identifiedGet("/api/v1/pricing/quotes/" + quote.path("quoteId").asText(), "quote-lookup"), 200);
+        assertThat(fetched.path("requestId").asText()).isEqualTo("quote-lookup");
+        assertThat(fetched.path("originalRequestId")).isEqualTo(input.path("requestId"));
+        assertThat(fetched.path("status").asText()).isEqualTo("BOOKED");
+        JsonNode fetchedTrade = checked(identifiedGet("/api/v1/bookings/" + trade.path("tradeId").asText(), "trade-lookup"), 200);
+        assertThat(fetchedTrade.path("requestId").asText()).isEqualTo("trade-lookup");
+        assertThat(fetchedTrade.path("originalRequestId").asText()).isEqualTo("book-original");
+    }
+
+    @ParameterizedTest
+    @MethodSource("directions")
+    void booksEitherSideAndEitherQuantityCurrency(String currency, String side) throws Exception {
+        JsonNode quote = checked(pricePost(price("TWO_WAY", currency, null)), 201);
+        assertThat(quote.has("side")).isFalse();
+        assertThat(quote.has("clientPrice")).isFalse();
+        assertThat(quote.has("prices")).isFalse();
+        String prefix = side.equals("BUY") ? "buy" : "sell";
+        JsonNode trade = checked(bookingPost(booking(quote, "book-two-way", side), UUID.randomUUID().toString()), 201);
+        assertThat(trade.path("clientPrice")).isEqualTo(quote.path(prefix + "ClientPrice"));
+        assertThat(trade.path(prefix + "Currency").asText()).isEqualTo(currency);
+        assertThat(trade.path(prefix + "Quantity").decimalValue()).isEqualByComparingTo("1000000");
+    }
+
+    static Stream<Arguments> directions() {
+        return Stream.of(Arguments.of("EUR", "BUY"), Arguments.of("EUR", "SELL"),
+                Arguments.of("USD", "BUY"), Arguments.of("USD", "SELL"));
     }
 
     @Test
-    void returnsContractedProblemResponses() throws Exception {
-        mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("invalid-pair", "EUR", "BUY").replace("EURUSD", "eurusd")))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.responseId").isNotEmpty())
-                .andExpect(jsonPath("$.responseAt").isNotEmpty())
-                .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
-
-        mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("wrong-quantity-ccy", "JPY", "BUY")))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("INVALID_PRICING_REQUEST"));
-
-        mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("unsupported-pair", "AAA", "BUY").replace("EURUSD", "AAAQQQ")))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.errorCode").value("UNSUPPORTED_INSTRUMENT"));
+    void requiresMatchingIdentityForLookupAndBooking() throws Exception {
+        JsonNode quote = checked(pricePost(price("ONE_WAY", "EUR", "BUY")), 201);
+        String path = "/api/v1/pricing/quotes/" + quote.path("quoteId").asText();
+        checked(get(path), 400);
+        for (String field : new String[]{"channel", "segment", "customerId"}) {
+            String changed = field.equals("channel") ? "VOICE" : field.equals("segment") ? "I" : "0000654321";
+            checked(bookingPost(booking(quote, "wrong-context", "BUY").put(field, changed), UUID.randomUUID().toString()), 404);
+        }
+        checked(get(path).header("X-Request-Id", "wrong-customer").header("X-Channel", "WEB")
+                .header("X-Segment", "C").header("X-Customer-Id", "0000654321"), 404);
+        JsonNode trade = checked(bookingPost(booking(quote, "correct", "BUY"), UUID.randomUUID().toString()), 201);
+        checked(get("/api/v1/bookings/" + trade.path("tradeId").asText()).header("X-Request-Id", "wrong-channel")
+                .header("X-Channel", "VOICE").header("X-Segment", "C").header("X-Customer-Id", "0000123456"), 404);
     }
 
     @Test
-    void enforcesIdentificationFieldLengthsAndQuoteDirectionRules() throws Exception {
-        mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("missing-side", "EUR", null)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("INVALID_PRICING_REQUEST"));
-
-        mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("bad-identifiers", "EUR", "BUY")
-                                .replace("WEB", "CHANNEL-NAME-OVER-20-CHARS")
-                                .replace("\"segment\": \"C\"", "\"segment\": \"CC\"")
-                                .replace("0000123456", "123")))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
-
-        mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "requestId": "two-way-with-side",
-                                  "channel": "WEB",
-                                  "segment": "C",
-                                  "customerId": "0000123456",
-                                  "currencyPair": "EURUSD",
-                                  "quantity": 1000000,
-                                  "quantityCurrency": "EUR",
-                                  "tenor": "ONE_MONTH",
-                                  "quoteType": "TWO_WAY",
-                                  "side": "BUY"
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("INVALID_PRICING_REQUEST"));
+    void conflictsOnChangedFingerprintAndRejectsUnquotedSide() throws Exception {
+        JsonNode quote = checked(pricePost(price("ONE_WAY", "EUR", "BUY")), 201);
+        ObjectNode body = booking(quote, "first", "BUY");
+        checked(bookingPost(booking(quote, "wrong-side", "SELL"), UUID.randomUUID().toString()), 400);
+        checked(post("/api/v1/bookings").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)), 400);
+        String key = UUID.randomUUID().toString();
+        checked(bookingPost(body, key), 201);
+        for (Consumer<ObjectNode> change : java.util.List.<Consumer<ObjectNode>>of(
+                b -> b.put("side", "SELL"), b -> b.put("channel", "VOICE"), b -> b.put("segment", "I"),
+                b -> b.put("quoteId", UUID.randomUUID().toString()))) {
+            ObjectNode modified = body.deepCopy();
+            change.accept(modified);
+            JsonNode error = checked(bookingPost(modified, key), 409);
+            assertThat(error.path("errorCode").asText()).isEqualTo("IDEMPOTENCY_CONFLICT");
+            assertThat(error.path("requestId").asText()).isEqualTo("first");
+        }
+        checked(bookingPost(body, UUID.randomUUID().toString()), 409);
     }
 
     @Test
-    void rejectsASideThatWasNotIncludedInAOneWayQuote() throws Exception {
-        String response = mockMvc.perform(post("/api/v1/pricing/quotes")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(oneWayPriceRequest("buy-only-request", "EUR", "BUY")))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String quoteId = objectMapper.readTree(response).required("quoteId").asText();
-
-        mockMvc.perform(post("/api/v1/bookings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(bookingRequest("wrong-side-booking", quoteId, "SELL")))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("SIDE_NOT_QUOTED"));
+    void enforcesVariantShapesAndScalarTypes() throws Exception {
+        for (Consumer<ObjectNode> invalid : java.util.List.<Consumer<ObjectNode>>of(
+                p -> p.remove("side"), p -> p.put("side", "UNKNOWN"), p -> p.putNull("side"),
+                p -> p.put("quoteType", "OTHER"), p -> p.remove("quoteType"),
+                p -> p.put("customerId", 1234567890L), p -> p.put("quantity", "1000000"),
+                p -> p.put("quantity", 0), p -> p.put("quantity", new BigDecimal("0.001")),
+                p -> p.put("quantity", new BigDecimal("1000000000001")), p -> p.put("typo", true),
+                p -> p.put("quantityCurrency", "JPY"), p -> p.put("channel", " ".repeat(3)),
+                p -> p.put("segment", "CC"), p -> p.put("customerId", "123"))) {
+            ObjectNode body = price("ONE_WAY", "EUR", "BUY");
+            invalid.accept(body);
+            checked(pricePost(body), 400);
+        }
+        checked(pricePost(price("TWO_WAY", "EUR", "BUY")), 400);
+        checked(pricePost(price("TWO_WAY", "EUR", null).putNull("side")), 400);
+        checked(pricePost(price("TWO_WAY", "EUR", null).put("buyClientPrice", 1)), 400);
     }
 
     @Test
-    void exposesTheAuthoredOpenApiContract() throws Exception {
-        mockMvc.perform(get("/openapi/fx-simulator-api.yaml"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("title: FX Simulator API")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("buyCoverPrice:")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("/api/v1/bookings:")));
+    void schemasRejectMissingOrMixedPriceFieldsAndBadRequestVariants() throws Exception {
+        ObjectNode quote = (ObjectNode) checked(pricePost(price("ONE_WAY", "EUR", "BUY")), 201);
+        assertThat(ContractAssertions.priceResponse(quote.toString()).hasErrors()).isFalse();
+        ObjectNode missing = quote.deepCopy();
+        missing.remove("clientPrice");
+        assertThat(ContractAssertions.priceResponse(missing.toString()).hasErrors()).isTrue();
+        assertThat(ContractAssertions.priceResponse(quote.deepCopy().put("buyClientPrice", 1).toString()).hasErrors()).isTrue();
+        assertThat(ContractAssertions.priceResponse(quote.deepCopy().put("quoteType", "TWO_WAY").toString()).hasErrors()).isTrue();
+        ObjectNode twoWay = (ObjectNode) checked(pricePost(price("TWO_WAY", "EUR", null)), 201);
+        twoWay.remove("sellSwapPoints");
+        assertThat(ContractAssertions.priceResponse(twoWay.toString()).hasErrors()).isTrue();
+        ObjectNode request = price("ONE_WAY", "EUR", null);
+        assertThat(ContractAssertions.priceRequest(request.toString()).hasErrors()).isTrue();
+        assertThat(ContractAssertions.priceRequest(price("TWO_WAY", "EUR", "BUY").toString()).hasErrors()).isTrue();
     }
 
-    private String oneWayPriceRequest(String requestId, String quantityCurrency, String side) {
-        String sideField = side == null ? "" : ",\n  \"side\": \"" + side + "\"";
-        return """
-                {
-                  "requestId": "%s",
-                  "channel": "WEB",
-                  "segment": "C",
-                  "customerId": "0000123456",
-                  "currencyPair": "EURUSD",
-                  "quantity": 1000000,
-                  "quantityCurrency": "%s",
-                  "tenor": "ONE_MONTH",
-                  "quoteType": "ONE_WAY"%s
-                }
-                """.formatted(requestId, quantityCurrency, sideField);
+    @Test
+    void returnsCorrelatedProblemResponsesAndCorrectMediaTypes() throws Exception {
+        ObjectNode unsupported = price("ONE_WAY", "AAA", "BUY").put("currencyPair", "AAAQQQ");
+        JsonNode error = checked(pricePost(unsupported), 422);
+        for (String field : new String[]{"requestId", "channel", "segment", "customerId"}) {
+            assertThat(error.path(field)).isEqualTo(unsupported.path(field));
+        }
+        checked(pricePost(price("ONE_WAY", "EUR", "BUY")).accept(MediaType.APPLICATION_PROBLEM_JSON), 406);
+        checked(post("/api/v1/pricing/quotes").contentType(MediaType.TEXT_PLAIN).content("{}"), 415);
+        checked(identifiedGet("/api/v1/pricing/quotes/not-a-uuid", "invalid-id"), 400);
+        checked(identifiedGet("/api/v1/pricing/quotes/" + UUID.randomUUID(), "missing-quote"), 404);
+        checked(identifiedGet("/api/v1/bookings/" + UUID.randomUUID(), "missing-trade"), 404);
     }
 
-    private String bookingRequest(String requestId, String quoteId, String side) {
-        return """
-                {
-                  "requestId": "%s",
-                  "channel": "WEB",
-                  "segment": "C",
-                  "customerId": "0000123456",
-                  "quoteId": "%s",
-                  "side": "%s"
-                }
-                """.formatted(requestId, quoteId, side);
+    @Test
+    void generatedHttpClientsRoundTripBothVariantsAndBookings() throws Exception {
+        var client = RestClient.builder().requestFactory(new MockMvcClientHttpRequestFactory(mvc)).build();
+        var factory = HttpServiceProxyFactory.builderFor(RestClientAdapter.create(client)).build();
+        var pricing = factory.createClient(com.example.fx.simulator.client.PricingApi.class);
+        var bookings = factory.createClient(com.example.fx.simulator.client.BookingApi.class);
+        OneWayPriceRequest one = mapper.treeToValue(price("ONE_WAY", "EUR", "BUY"), OneWayPriceRequest.class);
+        OneWayPriceQuote quote = (OneWayPriceQuote) pricing.requestPrice(one).getBody();
+        assertThat(quote.getClientPrice()).isPositive();
+        assertThat(pricing.getPriceQuote(quote.getQuoteId(), "lookup-client", "WEB", "C", "0000123456").getBody())
+                .isInstanceOf(OneWayPriceQuote.class);
+        TwoWayPriceRequest two = mapper.treeToValue(price("TWO_WAY", "USD", null), TwoWayPriceRequest.class);
+        assertThat(pricing.requestPrice(two).getBody()).isInstanceOf(TwoWayPriceQuote.class);
+        BookingRequest input = new BookingRequest("client-book", "WEB", "C", "0000123456", quote.getQuoteId(), Side.BUY);
+        String key = UUID.randomUUID().toString();
+        var trade = bookings.bookTrade(key, input).getBody();
+        input.setRequestId("client-retry");
+        assertThat(bookings.bookTrade(key, input).getBody().getTradeId()).isEqualTo(trade.getTradeId());
+        assertThat(bookings.getBooking("client-get", "WEB", "C", "0000123456", trade.getTradeId()).getBody().getRequestId())
+                .isEqualTo("client-get");
+        assertThatThrownBy(() -> pricing.getPriceQuote(UUID.randomUUID(), "missing", "WEB", "C", "0000123456"))
+                .isInstanceOfSatisfying(RestClientResponseException.class, exception ->
+                        assertThat(exception.getResponseBodyAs(ApiProblem.class).getErrorCode()).isEqualTo("QUOTE_NOT_FOUND"));
+    }
+
+    @Test
+    void servesAuthoritativeContract() throws Exception {
+        mvc.perform(get("/openapi/fx-simulator-api.yaml")).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("version: 2.0.0")));
     }
 }

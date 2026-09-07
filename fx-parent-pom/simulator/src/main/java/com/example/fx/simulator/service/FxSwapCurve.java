@@ -2,6 +2,8 @@ package com.example.fx.simulator.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
 import com.example.fx.simulator.api.model.Tenor;
@@ -21,7 +23,10 @@ public class FxSwapCurve {
             "CHF", curve("0.0040", "0.0045", "0.0050", "0.0060", "0.0080")
     );
 
-    public BigDecimal swapPoints(String currencyPair, Tenor tenor, BigDecimal spot, int rateScale) {
+    public BigDecimal swapPoints(String currencyPair, Tenor tenor, BigDecimal spot,
+                                 LocalDate spotDate, LocalDate valueDate, int rateScale) {
+        long days = ChronoUnit.DAYS.between(spotDate, valueDate);
+        if (days < 0) throw new IllegalArgumentException("valueDate must not precede spotDate");
         if (tenor == Tenor.SPOT) {
             return BigDecimal.ZERO.setScale(rateScale, RoundingMode.HALF_UP);
         }
@@ -30,7 +35,8 @@ public class FxSwapCurve {
         String quoteCurrency = currencyPair.substring(3, 6);
         BigDecimal baseRate = rateFor(baseCurrency, tenor);
         BigDecimal quoteRate = rateFor(quoteCurrency, tenor);
-        BigDecimal yearFraction = yearFraction(tenor);
+        // Explicit synthetic ACT/365F convention, using the exact returned settlement dates.
+        BigDecimal yearFraction = BigDecimal.valueOf(days).divide(new BigDecimal("365"), 16, RoundingMode.HALF_UP);
 
         BigDecimal quoteGrowth = BigDecimal.ONE.add(quoteRate.multiply(yearFraction));
         BigDecimal baseGrowth = BigDecimal.ONE.add(baseRate.multiply(yearFraction));
@@ -45,17 +51,6 @@ public class FxSwapCurve {
             throw SimulatorApiException.unsupportedInstrument(currency);
         }
         return curve.get(tenor);
-    }
-
-    private BigDecimal yearFraction(Tenor tenor) {
-        return switch (tenor) {
-            case SPOT -> BigDecimal.ZERO;
-            case ONE_WEEK -> new BigDecimal("0.0191780822");
-            case ONE_MONTH -> new BigDecimal("0.0833333333");
-            case THREE_MONTHS -> new BigDecimal("0.25");
-            case SIX_MONTHS -> new BigDecimal("0.50");
-            case ONE_YEAR -> BigDecimal.ONE;
-        };
     }
 
     private static Map<Tenor, BigDecimal> curve(
