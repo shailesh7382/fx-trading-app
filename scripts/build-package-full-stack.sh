@@ -33,7 +33,8 @@ log_step "Building the production frontend bundle..."
   npm run build
 )
 
-MAVEN_ARGS=(clean package)
+# The bundle was just built above, so Maven must not spend another npm cycle on it.
+MAVEN_ARGS=(clean package -Dui.build.skip=true)
 if [[ "${SKIP_MAVEN_TESTS:-false}" == "true" ]]; then
   MAVEN_ARGS+=(-DskipTests)
   log_step "Skipping Maven tests because SKIP_MAVEN_TESTS=true."
@@ -52,5 +53,11 @@ for service in simulator backend frontend; do
     printf '  - %-10s %s\n' "$service" "$jar_path"
   fi
 done
+
+tarball="$(ls "$PARENT_POM_DIR"/distribution/target/fx-trading-app-*.tar.gz 2>/dev/null | head -1 || true)"
+if [[ -n "$tarball" ]]; then
+  log_step "Distribution tarball:"
+  printf '  - %s\n' "$tarball"
+fi
 
 log_step "Full-stack build and packaging completed successfully."

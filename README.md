@@ -6,6 +6,7 @@ This repository contains a multi-service FX trading demo stack:
 - `simulator` — executable FX pricing, idempotent trade booking, and resting limit orders
 - `backend` — authentication, pricing API, JMS subscriber, legacy market data model, and H2 TCP server
 - `frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
+- `distribution` — packages every service and its operating scripts into one tarball
 
 The backend has intentionally not been connected to the simulator yet. It continues to use its existing
 JMS integration until the backend migration is implemented separately.
@@ -56,6 +57,32 @@ that arrives with the backend migration described above.
 The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
 during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under
 `target/generated-sources`. The generated client interfaces are ready for the later backend integration.
+
+## Packaged distribution
+
+`mvn package` at the repository root builds every service and produces one self-contained archive:
+
+```
+distribution/target/fx-trading-app-<version>.tar.gz
+```
+
+It needs only a Java 21 runtime and bash wherever it is unpacked:
+
+```bash
+tar xzf distribution/target/fx-trading-app-1.0-SNAPSHOT.tar.gz
+cd fx-trading-app-1.0-SNAPSHOT
+bin/start.sh     # simulator, then backend, then frontend, waiting for each port
+bin/status.sh    # one line per service; non-zero exit if any service is down
+bin/stop.sh      # reverse order, SIGTERM first, SIGKILL only if ignored
+```
+
+The archive holds `lib/` (one executable Spring Boot jar per service), `bin/`, and `conf/`; `logs/` and
+`run/` are created on first start. `conf/application.properties` overrides every service and
+`conf/<service>/application.properties` overrides one, both optional. `FX_JAVA_OPTS` reaches every JVM.
+
+The frontend jar carries the Vite bundle, which Maven builds with npm during `prepare-package`. Java-only
+builds are unaffected — `mvn test` never invokes npm — and `-Dui.build.skip=true` packages whatever bundle
+is already on disk, which is what `scripts/build-package-full-stack.sh` does after building it itself.
 
 ## Full-stack startup scripts
 

@@ -21,6 +21,7 @@
         <module>simulator</module>
         <module>backend</module>
         <module>frontend</module>
+        <module>distribution</module>
     </modules>
 
     <properties>

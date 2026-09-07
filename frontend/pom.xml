@@ -11,7 +11,10 @@
     <packaging>jar</packaging>
 
     <properties>
-        <ui.dist.dir>${project.basedir}/app/dist</ui.dist.dir>
+        <ui.dir>${project.basedir}/app</ui.dir>
+        <ui.dist.dir>${ui.dir}/dist</ui.dist.dir>
+        <!-- Set to true to jar whatever bundle is already on disk, skipping npm entirely. -->
+        <ui.build.skip>false</ui.build.skip>
     </properties>
 
     <dependencies>
@@ -27,24 +30,69 @@
     </dependencies>
 
     <build>
-        <resources>
-            <resource>
-                <directory>src/main/resources</directory>
-            </resource>
-            <resource>
-                <directory>${ui.dist.dir}</directory>
-                <targetPath>static</targetPath>
-            </resource>
-        </resources>
         <plugins>
+            <!-- Building the bundle at prepare-package keeps npm out of compile and test, and off the
+                 critical path of anyone who only runs the Java tests. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <workingDirectory>${ui.dir}</workingDirectory>
+                    <skip>${ui.build.skip}</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-ui-dependencies</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>npm</executable>
+                            <arguments>
+                                <argument>ci</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>build-ui-bundle</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>npm</executable>
+                            <arguments>
+                                <argument>run</argument>
+                                <argument>build</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
-                <configuration>
-                    <!-- The Vite bundle is the last resource root, so it must be allowed to
-                         replace the placeholder static/index.html shipped in src/main/resources. -->
-                    <overwrite>true</overwrite>
-                </configuration>
+                <executions>
+                    <execution>
+                        <id>copy-ui-bundle</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <!-- The bundle replaces the placeholder index.html shipped in src/main/resources. -->
+                            <overwrite>true</overwrite>
+                            <resources>
+                                <resource>
+                                    <directory>${ui.dist.dir}</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
