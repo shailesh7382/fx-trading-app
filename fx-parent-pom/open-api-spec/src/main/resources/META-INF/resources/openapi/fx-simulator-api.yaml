@@ -1,10 +1,11 @@
 openapi: 3.0.3
 info:
   title: FX Simulator API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Contract for requesting executable FX prices and booking simulated trades.
-    A quote is single-use, expires at `expiresAt`, and can be booked at either its bid or ask.
+    A one-way request returns one flat executable price; a two-way request returns flat BUY and SELL fields.
+    Quotes are single-use and expire at `expiresAt`.
 servers:
   - url: http://localhost:8090
     description: Local simulator
@@ -64,8 +65,8 @@ paths:
       operationId: bookTrade
       summary: Book a simulated trade from an active quote
       description: |
-        `clientRequestId` makes booking idempotent. Repeating the same request returns
-        the original trade; reusing the id with different booking details returns a conflict.
+        `requestId` makes booking idempotent. Repeating the same request returns the
+        original trade; reusing the id with different booking details returns a conflict.
       requestBody:
         required: true
         content:
@@ -166,75 +167,199 @@ components:
     PriceRequest:
       type: object
       additionalProperties: false
-      required: [currencyPair, amount, tenor]
+      description: |
+        For `ONE_WAY`, `side` is required. For `TWO_WAY`, `side` must be omitted and the
+        response contains flat BUY and SELL price fields. Side is expressed from the customer's
+        perspective for `quantityCurrency`.
+      required:
+        - requestId
+        - channel
+        - segment
+        - customerId
+        - currencyPair
+        - quantity
+        - quantityCurrency
+        - tenor
+        - quoteType
       properties:
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[A-Za-z0-9._:-]+$'
+          example: price-request-20260908-0001
+        channel:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: WEB
+        segment:
+          type: string
+          minLength: 1
+          maxLength: 1
+          example: C
+        customerId:
+          type: string
+          minLength: 10
+          maxLength: 10
+          example: '0000123456'
         currencyPair:
           type: string
           pattern: '^[A-Z]{6}$'
           example: EURUSD
           description: Six-character ISO currency pair, with base currency first.
-        amount:
+        quantity:
           type: number
           minimum: 0
           exclusiveMinimum: true
           example: 1000000
-          description: Amount of the base currency.
+          description: Quantity of `quantityCurrency` to buy or sell.
+        quantityCurrency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: EUR
+          description: Currency whose quantity and side are specified; must be one leg of currencyPair.
         tenor:
           $ref: '#/components/schemas/Tenor'
+        quoteType:
+          $ref: '#/components/schemas/QuoteType'
+        side:
+          $ref: '#/components/schemas/Side'
     BookingRequest:
       type: object
       additionalProperties: false
-      required: [quoteId, side, clientRequestId]
+      required: [requestId, channel, segment, customerId, quoteId, side]
       properties:
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[A-Za-z0-9._:-]+$'
+          example: booking-request-20260908-0001
+          description: Caller-generated idempotency key for this booking.
+        channel:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: WEB
+        segment:
+          type: string
+          minLength: 1
+          maxLength: 1
+          example: C
+        customerId:
+          type: string
+          minLength: 10
+          maxLength: 10
+          example: '0000123456'
         quoteId:
           type: string
           format: uuid
         side:
           $ref: '#/components/schemas/Side'
-        clientRequestId:
-          type: string
-          minLength: 1
-          maxLength: 100
-          pattern: '^[A-Za-z0-9._:-]+$'
-          example: backend-order-20260908-0001
-          description: Caller-generated idempotency key for this booking.
     PriceQuote:
       type: object
       additionalProperties: false
       required:
+        - requestId
+        - responseId
+        - responseAt
+        - channel
+        - segment
+        - customerId
         - quoteId
         - currencyPair
-        - amount
+        - quantity
+        - quantityCurrency
         - tenor
-        - bid
-        - ask
+        - quoteType
         - valueDate
         - quotedAt
         - expiresAt
         - status
       properties:
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: Echo of the pricing request identifier.
+        responseId:
+          type: string
+          format: uuid
+        responseAt:
+          type: string
+          format: date-time
+        channel:
+          type: string
+          minLength: 1
+          maxLength: 20
+        segment:
+          type: string
+          minLength: 1
+          maxLength: 1
+        customerId:
+          type: string
+          minLength: 10
+          maxLength: 10
         quoteId:
           type: string
           format: uuid
         currencyPair:
           type: string
           pattern: '^[A-Z]{6}$'
-        amount:
+        quantity:
           type: number
           minimum: 0
           exclusiveMinimum: true
+        quantityCurrency:
+          type: string
+          pattern: '^[A-Z]{3}$'
         tenor:
           $ref: '#/components/schemas/Tenor'
-        bid:
+        quoteType:
+          $ref: '#/components/schemas/QuoteType'
+        side:
+          $ref: '#/components/schemas/Side'
+        coverPrice:
           type: number
           minimum: 0
           exclusiveMinimum: true
-          description: Rate at which the simulator buys the base currency.
-        ask:
+          description: ONE_WAY simulated all-in market price before customer markup.
+        clientPrice:
           type: number
           minimum: 0
           exclusiveMinimum: true
-          description: Rate at which the simulator sells the base currency.
+          description: ONE_WAY executable all-in price offered to the customer.
+        swapPoints:
+          type: number
+          description: ONE_WAY forward points in outright-rate units.
+        buyCoverPrice:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: TWO_WAY cover price for buying quantityCurrency.
+        buyClientPrice:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: TWO_WAY client price for buying quantityCurrency.
+        buySwapPoints:
+          type: number
+          description: TWO_WAY forward points for buying quantityCurrency.
+        sellCoverPrice:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: TWO_WAY cover price for selling quantityCurrency.
+        sellClientPrice:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: TWO_WAY client price for selling quantityCurrency.
+        sellSwapPoints:
+          type: number
+          description: TWO_WAY forward points for selling quantityCurrency.
         valueDate:
           type: string
           format: date
@@ -250,41 +375,81 @@ components:
       type: object
       additionalProperties: false
       required:
+        - requestId
+        - responseId
+        - responseAt
+        - channel
+        - segment
+        - customerId
         - tradeId
-        - clientRequestId
         - quoteId
         - currencyPair
-        - amount
+        - quantity
+        - quantityCurrency
         - tenor
         - side
-        - executionRate
+        - coverPrice
+        - clientPrice
+        - swapPoints
         - valueDate
         - bookedAt
         - status
       properties:
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: Echo of the booking request identifier.
+        responseId:
+          type: string
+          format: uuid
+        responseAt:
+          type: string
+          format: date-time
+        channel:
+          type: string
+          minLength: 1
+          maxLength: 20
+        segment:
+          type: string
+          minLength: 1
+          maxLength: 1
+        customerId:
+          type: string
+          minLength: 10
+          maxLength: 10
         tradeId:
           type: string
           format: uuid
-        clientRequestId:
-          type: string
         quoteId:
           type: string
           format: uuid
         currencyPair:
           type: string
           pattern: '^[A-Z]{6}$'
-        amount:
+        quantity:
           type: number
           minimum: 0
           exclusiveMinimum: true
+        quantityCurrency:
+          type: string
+          pattern: '^[A-Z]{3}$'
         tenor:
           $ref: '#/components/schemas/Tenor'
         side:
           $ref: '#/components/schemas/Side'
-        executionRate:
+        coverPrice:
           type: number
           minimum: 0
           exclusiveMinimum: true
+        clientPrice:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Executed customer price.
+        swapPoints:
+          type: number
         valueDate:
           type: string
           format: date
@@ -296,8 +461,14 @@ components:
     ApiProblem:
       type: object
       additionalProperties: false
-      required: [type, title, status, detail, errorCode, timestamp]
+      required: [responseId, responseAt, type, title, status, detail, errorCode]
       properties:
+        responseId:
+          type: string
+          format: uuid
+        responseAt:
+          type: string
+          format: date-time
         type:
           type: string
           format: uri
@@ -315,15 +486,15 @@ components:
         errorCode:
           type: string
           example: QUOTE_EXPIRED
-        timestamp:
-          type: string
-          format: date-time
     Tenor:
       type: string
       enum: [SPOT, ONE_WEEK, ONE_MONTH, THREE_MONTHS, SIX_MONTHS, ONE_YEAR]
+    QuoteType:
+      type: string
+      enum: [ONE_WAY, TWO_WAY]
     Side:
       type: string
-      description: BUY buys the base currency; SELL sells the base currency.
+      description: BUY or SELL `quantityCurrency` from the customer's perspective.
       enum: [BUY, SELL]
     QuoteStatus:
       type: string

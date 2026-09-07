@@ -20,6 +20,11 @@ The simulator runs on port `8090` and exposes the authored contract at:
 - Pricing: `POST /api/v1/pricing/quotes` and `GET /api/v1/pricing/quotes/{quoteId}`
 - Booking: `POST /api/v1/bookings` and `GET /api/v1/bookings/{tradeId}`
 
+Pricing supports `ONE_WAY` requests with flat `side`, `coverPrice`, `clientPrice`, and `swapPoints` response
+fields. `TWO_WAY` requests return flat `buy*` and `sell*` price fields. Every request carries channel, segment,
+customer, and request identification; responses echo that context and add a response ID and timestamp. Forward
+prices are generated from tenor-specific currency curves.
+
 The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
 during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under
 `target/generated-sources`. The generated client interfaces are ready for the later backend integration.

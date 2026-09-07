@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,6 +19,7 @@ import com.example.fx.simulator.api.model.BookingRequest;
 import com.example.fx.simulator.api.model.PriceQuote;
 import com.example.fx.simulator.api.model.PriceRequest;
 import com.example.fx.simulator.api.model.QuoteStatus;
+import com.example.fx.simulator.api.model.QuoteType;
 import com.example.fx.simulator.api.model.Side;
 import com.example.fx.simulator.api.model.Tenor;
 import com.example.fx.simulator.api.model.TradeStatus;
@@ -58,40 +60,72 @@ public class SimulatorTradingService {
             Map.entry("CHFNZD", new BigDecimal("1.70940"))
     );
 
+    private static final BigDecimal CLIENT_MARKUP_FACTOR = new BigDecimal("0.75");
+
     private final Map<UUID, QuoteState> quotes = new ConcurrentHashMap<>();
     private final Map<UUID, TradeState> trades = new ConcurrentHashMap<>();
-    private final Map<String, StoredBooking> bookingsByClientRequest = new ConcurrentHashMap<>();
+    private final Map<BookingRequestKey, StoredBooking> bookingsByRequest = new ConcurrentHashMap<>();
     private final Clock clock;
     private final RandomGenerator random;
+    private final FxSwapCurve swapCurve;
     private final Duration quoteTtl;
 
     public SimulatorTradingService(
             Clock clock,
             RandomGenerator random,
+            FxSwapCurve swapCurve,
             @Value("${simulator.quote-ttl:30s}") Duration quoteTtl
     ) {
         this.clock = clock;
         this.random = random;
+        this.swapCurve = swapCurve;
         this.quoteTtl = quoteTtl;
     }
 
     public PriceQuote requestPrice(PriceRequest request) {
+        validatePricingRequest(request);
         BigDecimal referenceRate = REFERENCE_RATES.get(request.getCurrencyPair());
         if (referenceRate == null) {
             throw SimulatorApiException.unsupportedInstrument(request.getCurrencyPair());
         }
 
-        OffsetDateTime quotedAt = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+        OffsetDateTime quotedAt = now();
         int rateScale = request.getCurrencyPair().endsWith("JPY") ? 3 : 5;
-        BigDecimal halfSpread = calculateHalfSpread(request.getAmount(), rateScale);
-        BigDecimal mid = referenceRate.add(randomMovement(rateScale));
+        BigDecimal spotMid = referenceRate.add(randomMovement(rateScale));
+        BigDecimal swapPoints = swapCurve.swapPoints(
+                request.getCurrencyPair(),
+                request.getTenor(),
+                spotMid,
+                rateScale
+        );
+        BigDecimal forwardMid = spotMid.add(swapPoints);
+        BigDecimal halfSpread = calculateHalfSpread(request.getQuantity(), rateScale);
+        BigDecimal clientMarkup = halfSpread.multiply(CLIENT_MARKUP_FACTOR);
+        List<PriceState> prices = requestedSides(request).stream()
+                .map(side -> createPrice(
+                        request.getCurrencyPair(),
+                        request.getQuantityCurrency(),
+                        side,
+                        forwardMid,
+                        halfSpread,
+                        clientMarkup,
+                        swapPoints,
+                        rateScale
+                ))
+                .toList();
+
         QuoteState quote = new QuoteState(
+                request.getRequestId(),
+                request.getChannel(),
+                request.getSegment(),
+                request.getCustomerId(),
                 UUID.randomUUID(),
                 request.getCurrencyPair(),
-                request.getAmount(),
+                request.getQuantity(),
+                request.getQuantityCurrency(),
                 request.getTenor(),
-                mid.subtract(halfSpread).setScale(rateScale, RoundingMode.HALF_UP),
-                mid.add(halfSpread).setScale(rateScale, RoundingMode.HALF_UP),
+                request.getQuoteType(),
+                prices,
                 calculateValueDate(quotedAt.toLocalDate(), request.getTenor()),
                 quotedAt,
                 quotedAt.plus(quoteTtl),
@@ -111,17 +145,26 @@ public class SimulatorTradingService {
     }
 
     public synchronized BookingResult bookTrade(BookingRequest request) {
-        BookingFingerprint requestedBooking = new BookingFingerprint(request.getQuoteId(), request.getSide());
-        StoredBooking existingBooking = bookingsByClientRequest.get(request.getClientRequestId());
+        BookingRequestKey requestKey = new BookingRequestKey(
+                request.getRequestId(),
+                request.getChannel(),
+                request.getSegment(),
+                request.getCustomerId()
+        );
+        BookingFingerprint requestedBooking = new BookingFingerprint(
+                request.getQuoteId(),
+                request.getSide()
+        );
+        StoredBooking existingBooking = bookingsByRequest.get(requestKey);
         if (existingBooking != null) {
             if (!existingBooking.fingerprint().equals(requestedBooking)) {
-                throw SimulatorApiException.idempotencyConflict(request.getClientRequestId());
+                throw SimulatorApiException.idempotencyConflict(request.getRequestId());
             }
             return new BookingResult(toTrade(existingBooking.trade()), false);
         }
 
         QuoteState quote = quotes.get(request.getQuoteId());
-        if (quote == null) {
+        if (quote == null || !quote.customerId().equals(request.getCustomerId())) {
             throw SimulatorApiException.quoteNotFound(request.getQuoteId());
         }
 
@@ -134,26 +177,33 @@ public class SimulatorTradingService {
             throw SimulatorApiException.quoteAlreadyBooked(quote.quoteId());
         }
 
-        OffsetDateTime bookedAt = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+        UUID quoteId = quote.quoteId();
+        PriceState selectedPrice = quote.prices().stream()
+                .filter(price -> price.side() == request.getSide())
+                .findFirst()
+                .orElseThrow(() -> SimulatorApiException.sideNotQuoted(request.getSide(), quoteId));
         TradeState trade = new TradeState(
+                request.getRequestId(),
+                request.getChannel(),
+                request.getSegment(),
+                request.getCustomerId(),
                 UUID.randomUUID(),
-                request.getClientRequestId(),
                 quote.quoteId(),
                 quote.currencyPair(),
-                quote.amount(),
+                quote.quantity(),
+                quote.quantityCurrency(),
                 quote.tenor(),
-                request.getSide(),
-                request.getSide() == Side.BUY ? quote.ask() : quote.bid(),
+                selectedPrice.side(),
+                selectedPrice.coverPrice(),
+                selectedPrice.clientPrice(),
+                selectedPrice.swapPoints(),
                 quote.valueDate(),
-                bookedAt
+                now()
         );
 
         quotes.put(quote.quoteId(), quote.withStatus(QuoteStatus.BOOKED));
         trades.put(trade.tradeId(), trade);
-        bookingsByClientRequest.put(
-                request.getClientRequestId(),
-                new StoredBooking(requestedBooking, trade)
-        );
+        bookingsByRequest.put(requestKey, new StoredBooking(requestedBooking, trade));
         return new BookingResult(toTrade(trade), true);
     }
 
@@ -165,12 +215,69 @@ public class SimulatorTradingService {
         return toTrade(trade);
     }
 
+    private void validatePricingRequest(PriceRequest request) {
+        String quantityCurrency = request.getQuantityCurrency();
+        String currencyPair = request.getCurrencyPair();
+        boolean currencyBelongsToPair = currencyPair.substring(0, 3).equals(quantityCurrency)
+                || currencyPair.substring(3, 6).equals(quantityCurrency);
+        if (!currencyBelongsToPair) {
+            throw SimulatorApiException.invalidPricingRequest(
+                    "quantityCurrency must be one of the currencies in currencyPair."
+            );
+        }
+        if (request.getQuoteType() == QuoteType.ONE_WAY && request.getSide() == null) {
+            throw SimulatorApiException.invalidPricingRequest("side is required for a ONE_WAY price request.");
+        }
+        if (request.getQuoteType() == QuoteType.TWO_WAY && request.getSide() != null) {
+            throw SimulatorApiException.invalidPricingRequest("side must be omitted for a TWO_WAY price request.");
+        }
+    }
+
+    private List<Side> requestedSides(PriceRequest request) {
+        return request.getQuoteType() == QuoteType.TWO_WAY
+                ? List.of(Side.BUY, Side.SELL)
+                : List.of(request.getSide());
+    }
+
+    private PriceState createPrice(
+            String currencyPair,
+            String quantityCurrency,
+            Side side,
+            BigDecimal forwardMid,
+            BigDecimal halfSpread,
+            BigDecimal clientMarkup,
+            BigDecimal swapPoints,
+            int rateScale
+    ) {
+        boolean customerBuysBase = customerBuysBase(currencyPair, quantityCurrency, side);
+        BigDecimal coverPrice = customerBuysBase
+                ? forwardMid.add(halfSpread)
+                : forwardMid.subtract(halfSpread);
+        BigDecimal clientPrice = customerBuysBase
+                ? coverPrice.add(clientMarkup)
+                : coverPrice.subtract(clientMarkup);
+        return new PriceState(
+                side,
+                coverPrice.setScale(rateScale, RoundingMode.HALF_UP),
+                clientPrice.setScale(rateScale, RoundingMode.HALF_UP),
+                swapPoints
+        );
+    }
+
+    private boolean customerBuysBase(String currencyPair, String quantityCurrency, Side side) {
+        boolean quantityIsBase = currencyPair.startsWith(quantityCurrency);
+        return (quantityIsBase && side == Side.BUY) || (!quantityIsBase && side == Side.SELL);
+    }
+
     private QuoteState withCurrentStatus(QuoteState quote) {
-        if (quote.status() == QuoteStatus.ACTIVE
-                && !OffsetDateTime.now(clock).isBefore(quote.expiresAt())) {
+        if (quote.status() == QuoteStatus.ACTIVE && !now().isBefore(quote.expiresAt())) {
             return quote.withStatus(QuoteStatus.EXPIRED);
         }
         return quote;
+    }
+
+    private OffsetDateTime now() {
+        return OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private BigDecimal randomMovement(int rateScale) {
@@ -182,9 +289,9 @@ public class SimulatorTradingService {
         return BigDecimal.valueOf((sample * 2.0) - 1.0).multiply(range);
     }
 
-    private BigDecimal calculateHalfSpread(BigDecimal amount, int rateScale) {
+    private BigDecimal calculateHalfSpread(BigDecimal quantity, int rateScale) {
         BigDecimal baseHalfSpread = rateScale == 3 ? new BigDecimal("0.005") : new BigDecimal("0.00005");
-        BigDecimal sizeFactor = amount
+        BigDecimal sizeFactor = quantity
                 .divide(new BigDecimal("25000000"), 8, RoundingMode.HALF_UP)
                 .min(new BigDecimal("4"))
                 .multiply(new BigDecimal("0.25"))
@@ -231,30 +338,70 @@ public class SimulatorTradingService {
     }
 
     private PriceQuote toQuote(QuoteState quote) {
-        return new PriceQuote(
+        PriceQuote response = new PriceQuote(
+                quote.requestId(),
+                UUID.randomUUID(),
+                now(),
+                quote.channel(),
+                quote.segment(),
+                quote.customerId(),
                 quote.quoteId(),
                 quote.currencyPair(),
-                quote.amount(),
+                quote.quantity(),
+                quote.quantityCurrency(),
                 quote.tenor(),
-                quote.bid(),
-                quote.ask(),
+                quote.quoteType(),
                 quote.valueDate(),
                 quote.quotedAt(),
                 quote.expiresAt(),
                 quote.status()
         );
+
+        if (quote.quoteType() == QuoteType.ONE_WAY) {
+            PriceState price = quote.prices().getFirst();
+            response.setSide(price.side());
+            response.setCoverPrice(price.coverPrice());
+            response.setClientPrice(price.clientPrice());
+            response.setSwapPoints(price.swapPoints());
+        } else {
+            PriceState buyPrice = priceForSide(quote, Side.BUY);
+            response.setBuyCoverPrice(buyPrice.coverPrice());
+            response.setBuyClientPrice(buyPrice.clientPrice());
+            response.setBuySwapPoints(buyPrice.swapPoints());
+
+            PriceState sellPrice = priceForSide(quote, Side.SELL);
+            response.setSellCoverPrice(sellPrice.coverPrice());
+            response.setSellClientPrice(sellPrice.clientPrice());
+            response.setSellSwapPoints(sellPrice.swapPoints());
+        }
+        return response;
+    }
+
+    private PriceState priceForSide(QuoteState quote, Side side) {
+        return quote.prices().stream()
+                .filter(price -> price.side() == side)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing " + side + " price for quote " + quote.quoteId()));
     }
 
     private BookedTrade toTrade(TradeState trade) {
         return new BookedTrade(
+                trade.requestId(),
+                UUID.randomUUID(),
+                now(),
+                trade.channel(),
+                trade.segment(),
+                trade.customerId(),
                 trade.tradeId(),
-                trade.clientRequestId(),
                 trade.quoteId(),
                 trade.currencyPair(),
-                trade.amount(),
+                trade.quantity(),
+                trade.quantityCurrency(),
                 trade.tenor(),
                 trade.side(),
-                trade.executionRate(),
+                trade.coverPrice(),
+                trade.clientPrice(),
+                trade.swapPoints(),
                 trade.valueDate(),
                 trade.bookedAt(),
                 TradeStatus.BOOKED
@@ -264,19 +411,40 @@ public class SimulatorTradingService {
     public record BookingResult(BookedTrade trade, boolean created) {
     }
 
+    private record BookingRequestKey(
+            String requestId,
+            String channel,
+            String segment,
+            String customerId
+    ) {
+    }
+
     private record BookingFingerprint(UUID quoteId, Side side) {
     }
 
     private record StoredBooking(BookingFingerprint fingerprint, TradeState trade) {
     }
 
+    private record PriceState(
+            Side side,
+            BigDecimal coverPrice,
+            BigDecimal clientPrice,
+            BigDecimal swapPoints
+    ) {
+    }
+
     private record QuoteState(
+            String requestId,
+            String channel,
+            String segment,
+            String customerId,
             UUID quoteId,
             String currencyPair,
-            BigDecimal amount,
+            BigDecimal quantity,
+            String quantityCurrency,
             Tenor tenor,
-            BigDecimal bid,
-            BigDecimal ask,
+            QuoteType quoteType,
+            List<PriceState> prices,
             LocalDate valueDate,
             OffsetDateTime quotedAt,
             OffsetDateTime expiresAt,
@@ -284,12 +452,17 @@ public class SimulatorTradingService {
     ) {
         private QuoteState withStatus(QuoteStatus newStatus) {
             return new QuoteState(
+                    requestId,
+                    channel,
+                    segment,
+                    customerId,
                     quoteId,
                     currencyPair,
-                    amount,
+                    quantity,
+                    quantityCurrency,
                     tenor,
-                    bid,
-                    ask,
+                    quoteType,
+                    prices,
                     valueDate,
                     quotedAt,
                     expiresAt,
@@ -299,14 +472,20 @@ public class SimulatorTradingService {
     }
 
     private record TradeState(
+            String requestId,
+            String channel,
+            String segment,
+            String customerId,
             UUID tradeId,
-            String clientRequestId,
             UUID quoteId,
             String currencyPair,
-            BigDecimal amount,
+            BigDecimal quantity,
+            String quantityCurrency,
             Tenor tenor,
             Side side,
-            BigDecimal executionRate,
+            BigDecimal coverPrice,
+            BigDecimal clientPrice,
+            BigDecimal swapPoints,
             LocalDate valueDate,
             OffsetDateTime bookedAt
     ) {

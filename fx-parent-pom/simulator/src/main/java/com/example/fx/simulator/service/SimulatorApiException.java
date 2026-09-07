@@ -1,5 +1,6 @@
 package com.example.fx.simulator.service;
 
+import com.example.fx.simulator.api.model.Side;
 import org.springframework.http.HttpStatus;
 
 public final class SimulatorApiException extends RuntimeException {
@@ -21,6 +22,15 @@ public final class SimulatorApiException extends RuntimeException {
                 "UNSUPPORTED_INSTRUMENT",
                 "Unsupported instrument",
                 "No simulated market is configured for " + currencyPair + "."
+        );
+    }
+
+    public static SimulatorApiException invalidPricingRequest(String detail) {
+        return new SimulatorApiException(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_PRICING_REQUEST",
+                "Invalid pricing request",
+                detail
         );
     }
 
@@ -60,12 +70,21 @@ public final class SimulatorApiException extends RuntimeException {
         );
     }
 
-    public static SimulatorApiException idempotencyConflict(String clientRequestId) {
+    public static SimulatorApiException sideNotQuoted(Side side, Object quoteId) {
+        return new SimulatorApiException(
+                HttpStatus.BAD_REQUEST,
+                "SIDE_NOT_QUOTED",
+                "Side not quoted",
+                "Quote " + quoteId + " does not contain a " + side + " price."
+        );
+    }
+
+    public static SimulatorApiException idempotencyConflict(String requestId) {
         return new SimulatorApiException(
                 HttpStatus.CONFLICT,
                 "IDEMPOTENCY_CONFLICT",
                 "Idempotency conflict",
-                "clientRequestId " + clientRequestId + " was already used for different booking details."
+                "requestId " + requestId + " was already used for different booking details."
         );
     }
 

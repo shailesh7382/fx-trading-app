@@ -4,6 +4,7 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.example.fx.simulator.api.model.ApiProblem;
@@ -77,12 +78,13 @@ public class SimulatorExceptionHandler {
             String detail
     ) {
         ApiProblem body = new ApiProblem(
+                UUID.randomUUID(),
+                OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC),
                 URI.create("urn:problem:fx-simulator:" + errorCode.toLowerCase().replace('_', '-')),
                 title,
                 status.value(),
                 detail,
-                errorCode,
-                OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC)
+                errorCode
         );
         return ResponseEntity
                 .status(status)
