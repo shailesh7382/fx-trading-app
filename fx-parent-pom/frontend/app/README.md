@@ -29,6 +29,34 @@ This frontend has been upgraded from Create React App to **Vite** and redesigned
 - **Market analysis** view driven by current feed conditions
 - **Portfolio** view with derived exposures and customer concentration
 
+## Project structure
+
+```
+src/
+├── main.tsx              entry point
+├── app/                  App root, route table, MUI theme
+├── features/             one folder per screen area
+│   ├── auth/             Login, ProtectedRoute, UserProvider
+│   ├── workspace/        WorkspaceLayout shell + useWorkspaceData
+│   ├── rates/            RateGrid
+│   ├── limit-orders/     LimitOrders
+│   ├── notifications/    Notifications
+│   ├── booking/          TradeBooking
+│   ├── blotter/          TradeBlotter
+│   ├── analysis/         MarketAnalysis
+│   └── portfolio/        Portfolio (built, not currently routed)
+├── shared/               cross-feature code
+│   ├── api/client.ts     typed axios client
+│   ├── types/            domain model
+│   ├── utils/            formatters, CSV export
+│   └── demo/             demo-mode fallback data
+└── assets/
+
+tests/                    separate package, mirrors src/, own tsconfig
+```
+
+Imports use the `@/` alias for `src/`, declared in `tsconfig.base.json` and `vite.config.ts`.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` if you want to override the defaults.
@@ -45,16 +73,16 @@ Available variables:
 
 ```bash
 npm install
-npm run dev
-npm run build
+npm run dev        # Vite dev server on :5173
+npm run typecheck  # tsc over src/ and tests/
+npm run build      # typecheck, then production bundle into dist/
 npm run preview
-npm test
+npm test           # Vitest
 ```
 
 ## Local development
 
 ```bash
-cd "/Users/shailesh/codebase-new/fx-trading-app/fx-parent-pom/frontend/app"
 npm install
 npm run dev
 ```
@@ -64,7 +92,6 @@ Vite serves the app on `http://localhost:5173` by default.
 ## Production build
 
 ```bash
-cd "/Users/shailesh/codebase-new/fx-trading-app/fx-parent-pom/frontend/app"
 npm run build
 npm run preview
 ```
@@ -74,7 +101,6 @@ The production output is generated in `dist/`.
 ## Test
 
 ```bash
-cd "/Users/shailesh/codebase-new/fx-trading-app/fx-parent-pom/frontend/app"
 npm test
 ```
 

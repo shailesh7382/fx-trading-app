@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { Outlet } from 'react-router-dom';
 import { vi } from 'vitest';
-import type { UserContextValue } from '../../src/fxapp/UserProvider';
-import type { WorkspaceContextValue } from '../../src/fxapp/useWorkspaceData';
-import type { NormalizedRate } from '../../src/types';
+import type { UserContextValue } from '@/features/auth/UserProvider';
+import type { WorkspaceContextValue } from '@/features/workspace/useWorkspaceData';
+import type { NormalizedRate } from '@/shared/types';
 
 /**
  * Test doubles for the two contexts the screens read from. Both factories return a
@@ -66,7 +66,7 @@ export function createUserContext(overrides: Partial<UserContextValue> = {}): Us
   };
 }
 
-/** Stands in for `FXTradingApp`, publishing workspace data down the router outlet. */
+/** Stands in for `WorkspaceLayout`, publishing workspace data down the router outlet. */
 export function TestWorkspaceShell({
   workspaceData,
 }: {
