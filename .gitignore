@@ -9,9 +9,9 @@
 /.idea/fx-trading-app.iml
 /.idea/
 target/
-/fx-parent-pom/frontend/app/node_modules/
-/fx-parent-pom/frontend/app/build/
-/fx-parent-pom/frontend/app/dist/
-/fx-parent-pom/frontend/app/coverage/
+/frontend/app/node_modules/
+/frontend/app/build/
+/frontend/app/dist/
+/frontend/app/coverage/
 /.runtime/
 /logs/

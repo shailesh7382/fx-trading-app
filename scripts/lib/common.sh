@@ -4,7 +4,8 @@ set -Eeuo pipefail
 COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "$COMMON_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
-PARENT_POM_DIR="$REPO_ROOT/fx-parent-pom"
+# The parent pom and every module now sit at the repository root.
+PARENT_POM_DIR="$REPO_ROOT"
 UI_DIR="$PARENT_POM_DIR/frontend/app"
 RUNTIME_DIR="$REPO_ROOT/.runtime"
 PID_DIR="$RUNTIME_DIR/pids"

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
-const defaultDistDir = path.join(repoRoot, 'fx-parent-pom', 'frontend', 'app', 'dist');
+const defaultDistDir = path.join(repoRoot, 'frontend', 'app', 'dist');
 
 const host = process.env.UI_STATIC_HOST || '0.0.0.0';
 const port = Number.parseInt(process.env.UI_STATIC_PORT || '5173', 10);

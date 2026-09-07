@@ -2,10 +2,10 @@
 
 This repository contains a multi-service FX trading demo stack:
 
-- `fx-parent-pom/open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
-- `fx-parent-pom/simulator` — executable FX pricing, idempotent trade booking, and resting limit orders
-- `fx-parent-pom/backend` — authentication, pricing API, JMS subscriber, legacy market data model, and H2 TCP server
-- `fx-parent-pom/frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
+- `open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
+- `simulator` — executable FX pricing, idempotent trade booking, and resting limit orders
+- `backend` — authentication, pricing API, JMS subscriber, legacy market data model, and H2 TCP server
+- `frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
 
 The backend has intentionally not been connected to the simulator yet. It continues to use its existing
 JMS integration until the backend migration is implemented separately.
@@ -180,7 +180,7 @@ The `scripts/start-full-stack.sh` script:
 
 `scripts/start-full-stack-prod.sh` performs the same backend startup flow, but it also:
 
-1. runs `npm run build` inside `fx-parent-pom/frontend/app`
+1. runs `npm run build` inside `frontend/app`
 2. serves the built files from `dist/` using `scripts/serve-ui-dist.mjs`
 3. keeps SPA route fallback behavior by returning `index.html` for unknown frontend paths
 4. writes UI build and HTTP access logs into the current run directory
