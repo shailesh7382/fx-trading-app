@@ -1,12 +1,12 @@
 package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.WorkspaceNotificationResponse;
-import com.example.Tenor;
 import com.example.fx.backend.pricing.model.FxPrice;
 import com.example.fx.backend.pricing.model.LimitOrder;
 import com.example.fx.backend.pricing.model.LimitOrderStatus;
 import com.example.fx.backend.pricing.model.Source;
 import com.example.fx.backend.pricing.model.Status;
+import com.example.fx.backend.pricing.model.Tenor;
 import com.example.fx.backend.pricing.model.TimeInForce;
 import com.example.fx.backend.pricing.model.Trade;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,4 +1,4 @@
-package com.example;
+package com.example.fx.backend.pricing.model;
 
 public enum Tenor {
     SP, 

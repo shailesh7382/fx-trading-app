@@ -1,4 +1,7 @@
-package com.example;
+package com.example.fx.backend.pricing.service;
+
+import com.example.fx.backend.pricing.model.MarketData;
+import com.example.fx.backend.pricing.model.Tenor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;

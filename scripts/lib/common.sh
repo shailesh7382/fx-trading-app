@@ -465,9 +465,9 @@ ensure_backend_dependencies() {
     echo "================================================================"
     echo "Backend bootstrap started at $(timestamp)"
     echo "WORK_DIR: $PARENT_POM_DIR"
-    echo "COMMAND: mvn -pl common-data -am install -DskipTests"
+    echo "COMMAND: mvn -pl open-api-spec -am install -DskipTests"
     echo "================================================================"
-    mvn -pl common-data -am install -DskipTests
+    mvn -pl open-api-spec -am install -DskipTests
   ) >> "$install_log" 2>&1
 
   log_msg INFO "Backend bootstrap completed. Log: $install_log"

@@ -2,7 +2,6 @@ package com.example.fx.backend.pricing.model;
 
 import jakarta.persistence.*;
 
-import com.example.Tenor;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;

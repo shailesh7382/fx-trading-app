@@ -1,6 +1,6 @@
 package com.example.fx.backend.pricing.service;
 
-import com.example.MarketData;
+import com.example.fx.backend.pricing.model.MarketData;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Component;

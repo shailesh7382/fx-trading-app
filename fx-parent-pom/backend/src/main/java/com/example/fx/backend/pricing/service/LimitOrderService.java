@@ -2,10 +2,10 @@ package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.LimitOrderAmendRequest;
 import com.example.fx.backend.pricing.dto.LimitOrderRequest;
-import com.example.Tenor;
 import com.example.fx.backend.pricing.model.FxPrice;
 import com.example.fx.backend.pricing.model.LimitOrder;
 import com.example.fx.backend.pricing.model.LimitOrderStatus;
+import com.example.fx.backend.pricing.model.Tenor;
 import com.example.fx.backend.pricing.model.TimeInForce;
 import com.example.fx.backend.pricing.repository.FxPriceRepository;
 import com.example.fx.backend.pricing.repository.LimitOrderRepository;

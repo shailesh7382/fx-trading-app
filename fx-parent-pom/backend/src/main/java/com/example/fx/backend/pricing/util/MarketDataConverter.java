@@ -1,10 +1,10 @@
 package com.example.fx.backend.pricing.util;
 
 import com.example.fx.backend.pricing.model.FxPrice;
-import com.example.MarketData;
-import com.example.Tenor;
+import com.example.fx.backend.pricing.model.MarketData;
 import com.example.fx.backend.pricing.model.Source;
 import com.example.fx.backend.pricing.model.Status;
+import com.example.fx.backend.pricing.model.Tenor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;

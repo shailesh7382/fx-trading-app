@@ -1,4 +1,4 @@
-package com.example;
+package com.example.fx.backend.pricing.model;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;

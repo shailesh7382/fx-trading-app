@@ -4,8 +4,7 @@ This repository contains a multi-service FX trading demo stack:
 
 - `fx-parent-pom/open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
 - `fx-parent-pom/simulator` — executable FX pricing and idempotent trade-booking simulator
-- `fx-parent-pom/backend` — authentication, pricing API, JMS subscriber, and H2 TCP server
-- `fx-parent-pom/common-data` — legacy market data model still used by the unchanged backend
+- `fx-parent-pom/backend` — authentication, pricing API, JMS subscriber, legacy market data model, and H2 TCP server
 - `fx-parent-pom/frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
 
 The backend has intentionally not been connected to the simulator yet. It continues to use its existing

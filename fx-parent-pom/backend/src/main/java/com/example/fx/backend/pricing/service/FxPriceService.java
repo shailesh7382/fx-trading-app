@@ -1,10 +1,9 @@
 package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.FxPriceDTO;
-import com.example.MarketData;
-import com.example.MarketDataUpdateListener;
-import com.example.Tenor;
 import com.example.fx.backend.pricing.model.FxPrice;
+import com.example.fx.backend.pricing.model.MarketData;
+import com.example.fx.backend.pricing.model.Tenor;
 import com.example.fx.backend.pricing.repository.FxPriceRepository;
 import com.example.fx.backend.pricing.util.MarketDataConverter;
 import org.springframework.beans.factory.annotation.Autowired;
