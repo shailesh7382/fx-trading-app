@@ -10,10 +10,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import com.example.fx.simulator.api.model.LimitOrder;
-import com.example.fx.simulator.api.model.LimitOrderEvent;
-import com.example.fx.simulator.api.model.LimitOrderExpiredEvent;
-import com.example.fx.simulator.api.model.LimitOrderTriggeredEvent;
+import com.example.fx.simulator.api.model.RestingOrder;
+import com.example.fx.simulator.api.model.RestingOrderEvent;
+import com.example.fx.simulator.api.model.RestingOrderExpiredEvent;
+import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,13 +36,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * retry, dedupe identity across attempts, and the terminal delivery state recorded on the order.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "simulator.limit-orders.evaluation-interval=50ms",
-        "simulator.limit-orders.dispatch-interval=50ms",
-        "simulator.limit-orders.callback.initial-backoff=50ms",
-        "simulator.limit-orders.callback.max-attempts=4",
-        "simulator.limit-orders.callback.allowed-prefixes[0]=http://localhost:"
+        "simulator.resting-orders.evaluation-interval=50ms",
+        "simulator.resting-orders.dispatch-interval=50ms",
+        "simulator.resting-orders.callback.initial-backoff=50ms",
+        "simulator.resting-orders.callback.max-attempts=4",
+        "simulator.resting-orders.callback.allowed-prefixes[0]=http://localhost:"
 })
-class LimitOrderCallbackIntegrationTest {
+class RestingOrderCallbackIntegrationTest {
     private static final Duration DEADLINE = Duration.ofSeconds(20);
 
     @LocalServerPort int port;
@@ -59,6 +59,7 @@ class LimitOrderCallbackIntegrationTest {
 
     ObjectNode order(String side, String limitPrice) {
         return mapper.createObjectNode().put("requestId", UUID.randomUUID().toString())
+                .put("orderId", "ORD-" + UUID.randomUUID())
                 .put("channel", "WEB").put("segment", "C").put("customerId", "0000123456")
                 .put("currencyPair", "EURUSD").put("quantity", 1000000).put("quantityCurrency", "EUR")
                 .put("tenor", "ONE_MONTH").put("side", side).put("limitPrice", new BigDecimal(limitPrice))
@@ -66,24 +67,23 @@ class LimitOrderCallbackIntegrationTest {
                 .put("callbackUrl", "http://localhost:" + port + "/test/callbacks");
     }
 
-    LimitOrder place(ObjectNode body) {
-        return simulator.post().uri("/api/v1/limit-orders")
-                .header("Idempotency-Key", UUID.randomUUID().toString())
+    RestingOrder place(ObjectNode body) {
+        return simulator.post().uri("/api/v1/resting-orders")
                 .contentType(MediaType.APPLICATION_JSON).body(body)
-                .retrieve().body(LimitOrder.class);
+                .retrieve().body(RestingOrder.class);
     }
 
-    LimitOrder fetch(UUID orderId) {
-        return simulator.get().uri("/api/v1/limit-orders/{id}", orderId)
+    RestingOrder fetch(String orderId) {
+        return simulator.get().uri("/api/v1/resting-orders/{id}", orderId)
                 .header("X-Request-Id", "poll").header("X-Channel", "WEB")
                 .header("X-Segment", "C").header("X-Customer-Id", "0000123456")
-                .retrieve().body(LimitOrder.class);
+                .retrieve().body(RestingOrder.class);
     }
 
     /** Polls rather than sleeps a fixed time, so a slow machine lengthens the wait instead of failing. */
-    LimitOrder awaitDelivery(UUID orderId) throws Exception {
+    RestingOrder awaitDelivery(String orderId) throws Exception {
         Instant deadline = Instant.now().plus(DEADLINE);
-        LimitOrder order = fetch(orderId);
+        RestingOrder order = fetch(orderId);
         while (Instant.now().isBefore(deadline) && order.getCallbackAttempts() == 0
                 || order.getCallbackStatus() == com.example.fx.simulator.api.model.CallbackStatus.PENDING) {
             if (!Instant.now().isBefore(deadline)) break;
@@ -93,10 +93,10 @@ class LimitOrderCallbackIntegrationTest {
         return order;
     }
 
-    List<LimitOrderEvent> received() {
+    List<RestingOrderEvent> received() {
         return receiver.bodies().stream().map(body -> {
             try {
-                return mapper.readValue(body, LimitOrderEvent.class);
+                return mapper.readValue(body, RestingOrderEvent.class);
             } catch (Exception exception) {
                 throw new AssertionError("Callback body did not match the published contract: " + body, exception);
             }
@@ -106,26 +106,26 @@ class LimitOrderCallbackIntegrationTest {
     @Test
     void retriesUntilTheReceiverAcceptsTheTriggeredEvent() throws Exception {
         receiver.refuseNext(2);
-        LimitOrder placed = place(order("BUY", "99.00000"));
+        RestingOrder placed = place(order("BUY", "99.00000"));
 
-        LimitOrder delivered = awaitDelivery(placed.getOrderId());
-        assertThat(delivered.getStatus()).isEqualTo(com.example.fx.simulator.api.model.LimitOrderStatus.TRIGGERED);
+        RestingOrder delivered = awaitDelivery(placed.getOrderId());
+        assertThat(delivered.getStatus()).isEqualTo(com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED);
         assertThat(delivered.getCallbackStatus()).isEqualTo(com.example.fx.simulator.api.model.CallbackStatus.DELIVERED);
         assertThat(delivered.getCallbackAttempts()).isEqualTo(3);
 
-        List<LimitOrderEvent> events = received();
+        List<RestingOrderEvent> events = received();
         assertThat(events).hasSize(3).allSatisfy(event ->
-                assertThat(event).isInstanceOf(LimitOrderTriggeredEvent.class));
-        List<LimitOrderTriggeredEvent> triggered = events.stream().map(LimitOrderTriggeredEvent.class::cast).toList();
-        assertThat(triggered).extracting(LimitOrderTriggeredEvent::getEventId).containsOnly(triggered.get(0).getEventId());
-        assertThat(triggered).extracting(LimitOrderTriggeredEvent::getAttempt).containsExactly(1, 2, 3);
-        assertThat(triggered).extracting(LimitOrderTriggeredEvent::getOccurredAt)
+                assertThat(event).isInstanceOf(RestingOrderTriggeredEvent.class));
+        List<RestingOrderTriggeredEvent> triggered = events.stream().map(RestingOrderTriggeredEvent.class::cast).toList();
+        assertThat(triggered).extracting(RestingOrderTriggeredEvent::getEventId).containsOnly(triggered.get(0).getEventId());
+        assertThat(triggered).extracting(RestingOrderTriggeredEvent::getAttempt).containsExactly(1, 2, 3);
+        assertThat(triggered).extracting(RestingOrderTriggeredEvent::getOccurredAt)
                 .containsOnly(triggered.get(0).getOccurredAt());
 
-        LimitOrderTriggeredEvent event = triggered.get(0);
+        RestingOrderTriggeredEvent event = triggered.get(0);
         assertThat(event.getOrderId()).isEqualTo(placed.getOrderId());
-        assertThat(event.getTradeId()).isEqualTo(delivered.getTradeId());
-        assertThat(event.getClientPrice()).isEqualByComparingTo(delivered.getExecutedPrice());
+        // The order carries no execution detail, so the event is the only description of the fill.
+        assertThat(event.getTradeId()).isNotNull();
         assertThat(event.getClientPrice()).isLessThanOrEqualTo(event.getLimitPrice());
         assertThat(event.getBuyCurrency()).isEqualTo("EUR");
         assertThat(event.getBuyQuantity()).isEqualByComparingTo("1000000");
@@ -145,16 +145,15 @@ class LimitOrderCallbackIntegrationTest {
         ObjectNode unreachable = order("BUY", "0.50000")
                 .put("timeInForce", "GOOD_TILL_TIME")
                 .put("expiresAt", OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(1).toString());
-        LimitOrder placed = place(unreachable);
+        RestingOrder placed = place(unreachable);
 
-        LimitOrder expired = awaitDelivery(placed.getOrderId());
-        assertThat(expired.getStatus()).isEqualTo(com.example.fx.simulator.api.model.LimitOrderStatus.EXPIRED);
+        RestingOrder expired = awaitDelivery(placed.getOrderId());
+        assertThat(expired.getStatus()).isEqualTo(com.example.fx.simulator.api.model.RestingOrderStatus.EXPIRED);
         assertThat(expired.getCallbackStatus()).isEqualTo(com.example.fx.simulator.api.model.CallbackStatus.DELIVERED);
-        assertThat(expired.getTradeId()).isNull();
 
-        assertThat(received()).singleElement().isInstanceOfSatisfying(LimitOrderExpiredEvent.class, event -> {
+        assertThat(received()).singleElement().isInstanceOfSatisfying(RestingOrderExpiredEvent.class, event -> {
             assertThat(event.getOrderId()).isEqualTo(placed.getOrderId());
-            assertThat(event.getStatus()).isEqualTo(com.example.fx.simulator.api.model.LimitOrderStatus.EXPIRED);
+            assertThat(event.getStatus()).isEqualTo(com.example.fx.simulator.api.model.RestingOrderStatus.EXPIRED);
             assertThat(event.getExpiresAt()).isEqualTo(placed.getExpiresAt());
             assertThat(event.getAttempt()).isEqualTo(1);
         });

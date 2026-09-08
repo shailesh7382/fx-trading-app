@@ -82,7 +82,7 @@ public class SimulatorStateStore {
         return new BookingResult(trade, true);
     }
 
-    /** A triggered limit order books outside the quote/idempotency flow, but its trade is retrieved the same way. */
+    /** A triggered resting order books outside the quote/idempotency flow, but its trade is retrieved the same way. */
     public synchronized void addTrade(Quote quote, Trade trade) {
         purge();
         quotes.requireCapacity();

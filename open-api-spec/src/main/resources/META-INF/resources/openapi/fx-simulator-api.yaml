@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FX Simulator API
-  version: 2.1.0
+  version: 2.4.0
   description: |
     Contract for requesting executable FX prices and booking simulated trades.
     A one-way request returns one flat executable price; a two-way request returns flat BUY and SELL fields.
@@ -12,7 +12,8 @@ info:
     State and idempotency are bounded, in-memory, single-instance, and reset on restart.
     Default quote retention is five minutes after expiry; trade and idempotency retention are 24 hours.
     Capacity exhaustion returns 503 without evicting retained records or consuming a quote.
-    Limit orders rest until triggered, expired, or cancelled, and are evaluated on a fixed interval.
+    Resting orders rest until triggered, expired, or cancelled, and are evaluated on a fixed interval.
+    A limit order is the only resting order type today; its limitPrice is what ends the wait.
     A terminal order is reported to the caller's callbackUrl at least once; receivers dedupe on eventId.
 servers:
   - url: http://localhost:8090
@@ -22,8 +23,8 @@ tags:
     description: Request and inspect executable FX quotes.
   - name: Booking
     description: Book a previously issued quote and inspect the resulting trade.
-  - name: Limit Orders
-    description: Place, inspect, and cancel resting limit orders, and receive their terminal events.
+  - name: Resting Orders
+    description: Place, inspect, and cancel resting orders, and receive their terminal events.
 paths:
   /api/v1/pricing/quotes:
     post:
@@ -161,31 +162,32 @@ paths:
           $ref: '#/components/responses/BadRequest'
         default:
           $ref: '#/components/responses/Problem'
-  /api/v1/limit-orders:
+  /api/v1/resting-orders:
     post:
-      tags: [Limit Orders]
-      operationId: placeLimitOrder
-      summary: Place a resting limit order
+      tags: [Resting Orders]
+      operationId: placeRestingOrder
+      summary: Place a resting order
       description: |
         The order rests until its limit is reachable, its good-till time passes, or it is cancelled.
-        Idempotency-Key is required and scoped by customerId, exactly as for bookings.
-        Within retention, changing any order term for the same key returns 409; replays return 200.
+        The caller names the order with orderId, and that name is also the idempotency key: this endpoint
+        takes no Idempotency-Key header. Repeating a placement with the same orderId and identical terms
+        returns 200 and the original order, so a lost response is safe to retry. Reusing the orderId for
+        different terms returns 409, for as long as that order is retained; afterwards the name is free.
+        The name is scoped by customerId, so two customers may use the same one.
         GOOD_TILL_TIME requires expiresAt in the future; GOOD_TILL_CANCELLED must omit it.
         Working orders are evaluated on a fixed interval, so triggering is not instantaneous and the
         executed price is the one quoted at the evaluation that triggered it, never the limit itself.
         A triggered order books a trade retrievable at /api/v1/bookings/{tradeId}, then the simulator
         delivers a callback to callbackUrl. Orders and their events are bounded in-memory state.
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LimitOrderRequest'
+              $ref: '#/components/schemas/RestingOrderRequest'
       responses:
         '201':
-          description: Limit order accepted and working.
+          description: Resting order accepted and working.
           headers:
             Location:
               description: URI of the created order.
@@ -195,13 +197,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LimitOrder'
+                $ref: '#/components/schemas/RestingOrder'
         '200':
           description: The original order returned for an idempotent replay.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LimitOrder'
+                $ref: '#/components/schemas/RestingOrder'
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
@@ -213,11 +215,11 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
       callbacks:
-        limitOrderEvent:
+        restingOrderEvent:
           '{$request.body#/callbackUrl}':
             post:
-              tags: [Limit Orders]
-              operationId: onLimitOrderEvent
+              tags: [Resting Orders]
+              operationId: onRestingOrderEvent
               summary: Terminal-state notification delivered by the simulator
               description: |
                 Delivered at least once when a working order becomes TRIGGERED or EXPIRED.
@@ -231,7 +233,7 @@ paths:
                 content:
                   application/json:
                     schema:
-                      $ref: '#/components/schemas/LimitOrderEvent'
+                      $ref: '#/components/schemas/RestingOrderEvent'
               responses:
                 '200':
                   description: Event accepted.
@@ -239,11 +241,11 @@ paths:
                   description: Event accepted.
                 default:
                   description: Delivery is retried until the attempt limit is reached.
-  /api/v1/limit-orders/{orderId}:
+  /api/v1/resting-orders/{orderId}:
     get:
-      tags: [Limit Orders]
-      operationId: getLimitOrder
-      summary: Get the current state of a limit order
+      tags: [Resting Orders]
+      operationId: getRestingOrder
+      summary: Get the current state of a resting order
       parameters:
         - $ref: '#/components/parameters/OrderId'
         - $ref: '#/components/parameters/RequestIdHeader'
@@ -256,7 +258,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LimitOrder'
+                $ref: '#/components/schemas/RestingOrder'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -264,9 +266,9 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
     delete:
-      tags: [Limit Orders]
-      operationId: cancelLimitOrder
-      summary: Cancel a working limit order
+      tags: [Resting Orders]
+      operationId: cancelRestingOrder
+      summary: Cancel a working resting order
       description: |
         Only a WORKING order can be cancelled; an order that already reached a terminal state returns 409.
         Cancellation races evaluation: an order that triggers first stays TRIGGERED and its callback is still delivered.
@@ -282,7 +284,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LimitOrder'
+                $ref: '#/components/schemas/RestingOrder'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -305,10 +307,9 @@ components:
       name: orderId
       in: path
       required: true
-      description: Simulator limit order identifier.
+      description: The caller-assigned order identifier.
       schema:
-        type: string
-        format: uuid
+        $ref: '#/components/schemas/OrderId'
     RequestIdHeader:
       name: X-Request-Id
       in: header
@@ -360,7 +361,8 @@ components:
             $ref: '#/components/schemas/ApiProblem'
     Conflict:
       description: |
-        The quote was already booked, the order is no longer working, or the idempotency key was reused inconsistently.
+        The quote was already booked, the order is no longer working, the orderId already names a
+        different order, or a booking idempotency key was reused inconsistently.
       content:
         application/problem+json:
           schema:
@@ -632,7 +634,7 @@ components:
           $ref: '#/components/schemas/Timestamp'
         status:
           $ref: '#/components/schemas/TradeStatus'
-    LimitOrderRequest:
+    RestingOrderRequest:
       type: object
       additionalProperties: false
       description: |
@@ -640,10 +642,12 @@ components:
         orientation. A BUY triggers when the executable client price is at or below limitPrice; a SELL triggers
         when it is at or above. A limit that is already reachable triggers at the first evaluation after placement.
         GOOD_TILL_TIME requires expiresAt strictly in the future; GOOD_TILL_CANCELLED must omit expiresAt.
-      required: [requestId, channel, segment, customerId, currencyPair, quantity, quantityCurrency, tenor, side, limitPrice, timeInForce, callbackUrl]
+      required: [requestId, orderId, channel, segment, customerId, currencyPair, quantity, quantityCurrency, tenor, side, limitPrice, timeInForce, callbackUrl]
       properties:
         requestId:
           $ref: '#/components/schemas/RequestId'
+        orderId:
+          $ref: '#/components/schemas/OrderId'
         channel:
           $ref: '#/components/schemas/Channel'
         segment:
@@ -668,13 +672,14 @@ components:
           $ref: '#/components/schemas/Timestamp'
         callbackUrl:
           $ref: '#/components/schemas/CallbackUrl'
-    LimitOrder:
+    RestingOrder:
       type: object
       additionalProperties: false
       description: |
-        lastEvaluatedAt and lastEvaluatedPrice report the most recent evaluation, so a working order shows why
-        it has not triggered. closedAt is set once the order leaves WORKING, and the execution fields are
-        present exactly when status is TRIGGERED.
+        lastEvaluatedAt and lastEvaluatedPrice report the most recent evaluation, so a working order shows
+        why it has not triggered, and closedAt is set once the order leaves WORKING. The order carries no
+        execution detail: a TRIGGERED order's fill is described by its callback event and by the trade it
+        booked, which the event identifies.
       required: [requestId, channel, segment, customerId, originalRequestId, responseId, responseAt, orderId, currencyPair, quantity, quantityCurrency, tenor, side, limitPrice, timeInForce, status, placedAt, callbackUrl, callbackStatus, callbackAttempts]
       properties:
         requestId:
@@ -692,7 +697,7 @@ components:
         responseAt:
           $ref: '#/components/schemas/Timestamp'
         orderId:
-          $ref: '#/components/schemas/Identifier'
+          $ref: '#/components/schemas/OrderId'
         currencyPair:
           $ref: '#/components/schemas/CurrencyPair'
         quantity:
@@ -710,7 +715,7 @@ components:
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
         status:
-          $ref: '#/components/schemas/LimitOrderStatus'
+          $ref: '#/components/schemas/RestingOrderStatus'
         placedAt:
           $ref: '#/components/schemas/Timestamp'
         lastEvaluatedAt:
@@ -719,26 +724,22 @@ components:
           $ref: '#/components/schemas/Rate'
         closedAt:
           $ref: '#/components/schemas/Timestamp'
-        tradeId:
-          $ref: '#/components/schemas/Identifier'
-        executedPrice:
-          $ref: '#/components/schemas/Rate'
         callbackUrl:
           $ref: '#/components/schemas/CallbackUrl'
         callbackStatus:
           $ref: '#/components/schemas/CallbackStatus'
         callbackAttempts:
           $ref: '#/components/schemas/AttemptCount'
-    LimitOrderEvent:
+    RestingOrderEvent:
       oneOf:
-        - $ref: '#/components/schemas/LimitOrderTriggeredEvent'
-        - $ref: '#/components/schemas/LimitOrderExpiredEvent'
+        - $ref: '#/components/schemas/RestingOrderTriggeredEvent'
+        - $ref: '#/components/schemas/RestingOrderExpiredEvent'
       discriminator:
         propertyName: eventType
         mapping:
-          TRIGGERED: '#/components/schemas/LimitOrderTriggeredEvent'
-          EXPIRED: '#/components/schemas/LimitOrderExpiredEvent'
-    LimitOrderTriggeredEvent:
+          TRIGGERED: '#/components/schemas/RestingOrderTriggeredEvent'
+          EXPIRED: '#/components/schemas/RestingOrderExpiredEvent'
+    RestingOrderTriggeredEvent:
       type: object
       additionalProperties: false
       description: |
@@ -758,7 +759,7 @@ components:
         attempt:
           $ref: '#/components/schemas/AttemptCount'
         orderId:
-          $ref: '#/components/schemas/Identifier'
+          $ref: '#/components/schemas/OrderId'
         originalRequestId:
           $ref: '#/components/schemas/RequestId'
         channel:
@@ -780,7 +781,7 @@ components:
         limitPrice:
           $ref: '#/components/schemas/Rate'
         status:
-          $ref: '#/components/schemas/LimitOrderStatus'
+          $ref: '#/components/schemas/RestingOrderStatus'
         tradeId:
           $ref: '#/components/schemas/Identifier'
         coverPrice:
@@ -801,7 +802,7 @@ components:
           $ref: '#/components/schemas/Date'
         valueDate:
           $ref: '#/components/schemas/Date'
-    LimitOrderExpiredEvent:
+    RestingOrderExpiredEvent:
       type: object
       additionalProperties: false
       description: The good-till time passed while the order was still working. No trade exists.
@@ -818,7 +819,7 @@ components:
         attempt:
           $ref: '#/components/schemas/AttemptCount'
         orderId:
-          $ref: '#/components/schemas/Identifier'
+          $ref: '#/components/schemas/OrderId'
         originalRequestId:
           $ref: '#/components/schemas/RequestId'
         channel:
@@ -840,7 +841,7 @@ components:
         limitPrice:
           $ref: '#/components/schemas/Rate'
         status:
-          $ref: '#/components/schemas/LimitOrderStatus'
+          $ref: '#/components/schemas/RestingOrderStatus'
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
         lastEvaluatedPrice:
@@ -941,7 +942,7 @@ components:
       type: string
       maxLength: 2000
       pattern: '^https?://\S+$'
-      example: http://localhost:8080/api/limit-orders/events
+      example: http://localhost:8080/api/resting-orders/events
       description: |
         Absolute http(s) URL the simulator POSTs order events to. It must start with one of the
         simulator's configured allowed prefixes; any other URL is rejected with 422.
@@ -950,6 +951,16 @@ components:
       format: int32
       minimum: 0
       description: Delivery attempts made so far, counting the first attempt as one.
+    OrderId:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: '^[A-Za-z0-9._:-]+$'
+      example: ORD-20260908-000123
+      description: |
+        Caller-assigned name for the order, and the idempotency key for placing it. Unique per customerId
+        for as long as the order is retained: repeating identical terms replays the original order, while
+        different terms are rejected. Two customers may use the same value.
     Identifier:
       type: string
       format: uuid
@@ -974,7 +985,7 @@ components:
       type: string
       enum: [GOOD_TILL_CANCELLED, GOOD_TILL_TIME]
       description: GOOD_TILL_TIME requires expiresAt; GOOD_TILL_CANCELLED must omit it.
-    LimitOrderStatus:
+    RestingOrderStatus:
       type: string
       enum: [WORKING, TRIGGERED, EXPIRED, CANCELLED]
       description: |

@@ -3,7 +3,7 @@ package com.example.fx.simulator.service;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import com.example.fx.simulator.api.model.LimitOrderStatus;
+import com.example.fx.simulator.api.model.RestingOrderStatus;
 import com.example.fx.simulator.api.model.QuoteStatus;
 import com.example.fx.simulator.domain.TradingModels.*;
 import org.slf4j.Logger;
@@ -16,16 +16,16 @@ import org.springframework.stereotype.Component;
  * so a slow pricing pass never blocks placement, lookup, or cancellation.
  */
 @Component
-public class LimitOrderMonitor {
-    private static final Logger LOG = LoggerFactory.getLogger(LimitOrderMonitor.class);
+public class RestingOrderMonitor {
+    private static final Logger LOG = LoggerFactory.getLogger(RestingOrderMonitor.class);
 
-    private final LimitOrderStore orders;
+    private final RestingOrderStore orders;
     private final SimulatorStateStore trades;
     private final FxPricingEngine pricing;
     private final SettlementCalculator settlement;
     private final Clock clock;
 
-    public LimitOrderMonitor(LimitOrderStore orders, SimulatorStateStore trades, FxPricingEngine pricing,
+    public RestingOrderMonitor(RestingOrderStore orders, SimulatorStateStore trades, FxPricingEngine pricing,
                              SettlementCalculator settlement, Clock clock) {
         this.orders = orders;
         this.trades = trades;
@@ -34,29 +34,29 @@ public class LimitOrderMonitor {
         this.clock = clock;
     }
 
-    @Scheduled(fixedDelayString = "${simulator.limit-orders.evaluation-interval:250ms}")
+    @Scheduled(fixedDelayString = "${simulator.resting-orders.evaluation-interval:250ms}")
     public void evaluateWorkingOrders() {
-        for (LimitOrder order : orders.workingOrders()) {
+        for (RestingOrder order : orders.workingOrders()) {
             try {
                 evaluate(order);
             } catch (RuntimeException exception) {
                 // The order stays working, so a transient failure only postpones it to the next pass.
-                LOG.warn("Evaluation of limit order {} failed", order.orderId(), exception);
+                LOG.warn("Evaluation of resting order {} failed", order.orderId(), exception);
             }
         }
     }
 
-    private void evaluate(LimitOrder order) {
+    private void evaluate(RestingOrder order) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         if (order.expiredAt(now)) {
-            closed(orders.closeWithEvent(order.orderId(), LimitOrderStatus.EXPIRED, now, null));
+            closed(orders.closeWithEvent(order.key(), RestingOrderStatus.EXPIRED, now, null));
             return;
         }
 
-        LimitOrderCommand command = order.command();
+        RestingOrderCommand command = order.command();
         Quote quote = pricing.price(command.pricing());
         Price price = quote.prices().get(command.pricing().side());
-        orders.recordEvaluation(order.orderId(), now, price.clientPrice());
+        orders.recordEvaluation(order.key(), now, price.clientPrice());
         if (!command.triggers(price.clientPrice())) {
             return;
         }
@@ -66,12 +66,12 @@ public class LimitOrderMonitor {
                 settlement.calculate(command.pricing(), price), now);
         // Publish the trade first: a triggered event must never name a trade that cannot be retrieved.
         trades.addTrade(booked, trade);
-        closed(orders.closeWithEvent(order.orderId(), LimitOrderStatus.TRIGGERED, now, trade));
+        closed(orders.closeWithEvent(order.key(), RestingOrderStatus.TRIGGERED, now, trade));
     }
 
-    private void closed(LimitOrder order) {
+    private void closed(RestingOrder order) {
         if (order != null) {
-            LOG.info("Limit order {} is {}", order.orderId(), order.status());
+            LOG.info("Resting order {} is {}", order.orderId(), order.status());
         }
     }
 }

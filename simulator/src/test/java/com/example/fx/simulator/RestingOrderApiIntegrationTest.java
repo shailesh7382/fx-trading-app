@@ -6,7 +6,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
-import com.example.fx.simulator.service.LimitOrderMonitor;
+import com.example.fx.simulator.service.RestingOrderMonitor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -26,27 +26,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * is driven by hand where a test needs a working order to trigger.
  */
 @SpringBootTest(properties = {
-        "simulator.limit-orders.evaluation-interval=1h",
-        "simulator.limit-orders.dispatch-interval=1h"
+        "simulator.resting-orders.evaluation-interval=1h",
+        "simulator.resting-orders.dispatch-interval=1h"
 })
 @AutoConfigureMockMvc
-class LimitOrderApiIntegrationTest {
-    private static final String CALLBACK = "http://localhost:8080/api/limit-orders/events";
+class RestingOrderApiIntegrationTest {
+    private static final String CALLBACK = "http://localhost:8080/api/resting-orders/events";
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
-    @Autowired LimitOrderMonitor monitor;
+    @Autowired RestingOrderMonitor monitor;
 
     ObjectNode order(String side, String limitPrice) {
         return mapper.createObjectNode().put("requestId", UUID.randomUUID().toString())
+                .put("orderId", "ORD-" + UUID.randomUUID())
                 .put("channel", "WEB").put("segment", "C").put("customerId", "0000123456")
                 .put("currencyPair", "EURUSD").put("quantity", 1000000).put("quantityCurrency", "EUR")
                 .put("tenor", "ONE_MONTH").put("side", side).put("limitPrice", new BigDecimal(limitPrice))
                 .put("timeInForce", "GOOD_TILL_CANCELLED").put("callbackUrl", CALLBACK);
     }
 
-    MockHttpServletRequestBuilder placement(ObjectNode body, String key) throws Exception {
-        return post("/api/v1/limit-orders").header("Idempotency-Key", key)
+    MockHttpServletRequestBuilder placement(ObjectNode body) throws Exception {
+        return post("/api/v1/resting-orders")
                 .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body));
     }
 
@@ -62,36 +63,37 @@ class LimitOrderApiIntegrationTest {
     }
 
     JsonNode placeWorking(String side, String limitPrice) throws Exception {
-        return checked(placement(order(side, limitPrice), UUID.randomUUID().toString()), 201);
+        return checked(placement(order(side, limitPrice)), 201);
     }
 
     @Test
-    void placesWorkingOrderAndReplaysUnderTheSameKey() throws Exception {
+    void placesWorkingOrderAndReplaysUnderTheSameOrderId() throws Exception {
         ObjectNode input = order("BUY", "1.05000");
-        String key = UUID.randomUUID().toString();
-        JsonNode placed = checked(placement(input, key), 201);
+        JsonNode placed = checked(placement(input), 201);
         assertThat(placed.path("status").asText()).isEqualTo("WORKING");
         assertThat(placed.path("callbackStatus").asText()).isEqualTo("NOT_REQUIRED");
         assertThat(placed.path("callbackAttempts").asInt()).isZero();
         assertThat(placed.path("callbackUrl").asText()).isEqualTo(CALLBACK);
+        assertThat(placed.path("orderId")).isEqualTo(input.path("orderId"));
         assertThat(placed.path("requestId")).isEqualTo(input.path("requestId"));
         assertThat(placed.path("originalRequestId")).isEqualTo(input.path("requestId"));
-        for (String absent : new String[]{"tradeId", "executedPrice", "closedAt", "expiresAt", "lastEvaluatedAt"}) {
+        for (String absent : new String[]{"closedAt", "expiresAt", "lastEvaluatedAt", "lastEvaluatedPrice"}) {
             assertThat(placed.has(absent)).as(absent).isFalse();
         }
 
+        // A retry carries the same orderId and terms, and only its requestId differs.
         ObjectNode replayed = input.deepCopy();
         replayed.put("requestId", "order-retry");
-        JsonNode replay = checked(placement(replayed, key), 200);
+        JsonNode replay = checked(placement(replayed), 200);
         assertThat(replay.path("orderId")).isEqualTo(placed.path("orderId"));
         assertThat(replay.path("requestId").asText()).isEqualTo("order-retry");
         assertThat(replay.path("originalRequestId")).isEqualTo(input.path("requestId"));
         assertThat(replay.path("responseId")).isNotEqualTo(placed.path("responseId"));
 
-        JsonNode conflict = checked(placement(replayed.deepCopy().put("limitPrice", 1.04), key), 409);
-        assertThat(conflict.path("errorCode").asText()).isEqualTo("IDEMPOTENCY_CONFLICT");
+        JsonNode conflict = checked(placement(replayed.deepCopy().put("limitPrice", 1.04)), 409);
+        assertThat(conflict.path("errorCode").asText()).isEqualTo("ORDER_ID_IN_USE");
 
-        JsonNode fetched = checked(identified(get("/api/v1/limit-orders/" + placed.path("orderId").asText()),
+        JsonNode fetched = checked(identified(get("/api/v1/resting-orders/" + placed.path("orderId").asText()),
                 "order-lookup", "0000123456"), 200);
         assertThat(fetched.path("requestId").asText()).isEqualTo("order-lookup");
         assertThat(fetched.path("status").asText()).isEqualTo("WORKING");
@@ -108,64 +110,74 @@ class LimitOrderApiIntegrationTest {
                 o -> o.put("timeInForce", "IMMEDIATE_OR_CANCEL"),
                 o -> o.put("limitPrice", 0), o -> o.remove("limitPrice"), o -> o.remove("side"),
                 o -> o.put("quantityCurrency", "JPY"), o -> o.put("customerId", "123"),
-                o -> o.remove("callbackUrl"), o -> o.put("callbackUrl", "not-a-url"), o -> o.put("typo", true))) {
+                o -> o.remove("callbackUrl"), o -> o.put("callbackUrl", "not-a-url"), o -> o.put("typo", true),
+                o -> o.remove("orderId"), o -> o.put("orderId", "has a space"), o -> o.put("orderId", ""))) {
             ObjectNode body = order("BUY", "1.05000");
             invalid.accept(body);
-            checked(placement(body, UUID.randomUUID().toString()), 400);
+            checked(placement(body), 400);
         }
-        checked(post("/api/v1/limit-orders").contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsBytes(order("BUY", "1.05000"))), 400);
 
         JsonNode refused = checked(placement(order("BUY", "1.05000")
-                .put("callbackUrl", "http://evil.example.com/events"), UUID.randomUUID().toString()), 422);
+                .put("callbackUrl", "http://evil.example.com/events")), 422);
         assertThat(refused.path("errorCode").asText()).isEqualTo("CALLBACK_URL_NOT_ALLOWED");
         JsonNode unsupported = checked(placement(order("BUY", "1.05000")
-                .put("currencyPair", "AAAQQQ").put("quantityCurrency", "AAA"), UUID.randomUUID().toString()), 422);
+                .put("currencyPair", "AAAQQQ").put("quantityCurrency", "AAA")), 422);
         assertThat(unsupported.path("errorCode").asText()).isEqualTo("UNSUPPORTED_INSTRUMENT");
+    }
+
+    @Test
+    void refusesAnOrderIdTheCustomerIsAlreadyUsing() throws Exception {
+        ObjectNode first = order("BUY", "1.05000");
+        checked(placement(first), 201);
+
+        ObjectNode reused = order("SELL", "1.20000").put("orderId", first.path("orderId").asText());
+        JsonNode conflict = checked(placement(reused), 409);
+        assertThat(conflict.path("errorCode").asText()).isEqualTo("ORDER_ID_IN_USE");
+
+        // The name belongs to one customer, so another customer may use the same one.
+        ObjectNode elsewhere = order("BUY", "1.05000")
+                .put("orderId", first.path("orderId").asText())
+                .put("customerId", "0000654321");
+        checked(placement(elsewhere), 201);
     }
 
     @Test
     void keepsOrdersPrivateToTheirOwnContext() throws Exception {
         JsonNode placed = placeWorking("BUY", "1.05000");
-        String path = "/api/v1/limit-orders/" + placed.path("orderId").asText();
+        String path = "/api/v1/resting-orders/" + placed.path("orderId").asText();
         checked(get(path), 400);
         checked(identified(get(path), "wrong-customer", "0000654321"), 404);
         checked(identified(delete(path), "wrong-customer", "0000654321"), 404);
-        checked(identified(get("/api/v1/limit-orders/" + UUID.randomUUID()), "missing", "0000123456"), 404);
+        checked(identified(get("/api/v1/resting-orders/" + UUID.randomUUID()), "missing", "0000123456"), 404);
         checked(identified(get(path), "right-customer", "0000123456"), 200);
     }
 
     @Test
-    void triggersThroughTheMarketAndBooksARetrievableTrade() throws Exception {
+    void triggersThroughTheMarketAndClosesWithoutExposingTheFill() throws Exception {
         JsonNode placed = placeWorking("BUY", "99.00000");
         monitor.evaluateWorkingOrders();
 
-        JsonNode triggered = checked(identified(get("/api/v1/limit-orders/" + placed.path("orderId").asText()),
+        JsonNode triggered = checked(identified(get("/api/v1/resting-orders/" + placed.path("orderId").asText()),
                 "after-trigger", "0000123456"), 200);
         assertThat(triggered.path("status").asText()).isEqualTo("TRIGGERED");
         assertThat(triggered.path("callbackStatus").asText()).isEqualTo("PENDING");
         assertThat(triggered.path("closedAt").asText()).isNotBlank();
-        assertThat(triggered.path("executedPrice").decimalValue()).isLessThan(new BigDecimal("99.00000"));
-        assertThat(triggered.path("executedPrice")).isEqualTo(triggered.path("lastEvaluatedPrice"));
-
-        JsonNode trade = checked(identified(get("/api/v1/bookings/" + triggered.path("tradeId").asText()),
-                "trade-lookup", "0000123456"), 200);
-        assertThat(trade.path("clientPrice")).isEqualTo(triggered.path("executedPrice"));
-        assertThat(trade.path("side").asText()).isEqualTo("BUY");
-        assertThat(trade.path("buyCurrency").asText()).isEqualTo("EUR");
-        assertThat(trade.path("buyQuantity").decimalValue()).isEqualByComparingTo("1000000");
+        assertThat(triggered.path("lastEvaluatedPrice").decimalValue()).isLessThan(new BigDecimal("99.00000"));
+        // A triggered order still describes the order, never the fill it produced.
+        for (String execution : new String[]{"tradeId", "executedPrice", "clientPrice", "coverPrice"}) {
+            assertThat(triggered.has(execution)).as(execution).isFalse();
+        }
     }
 
     @Test
     void cancelsOnlyWhileWorkingAndStopsEvaluation() throws Exception {
         JsonNode placed = placeWorking("BUY", "99.00000");
-        String path = "/api/v1/limit-orders/" + placed.path("orderId").asText();
+        String path = "/api/v1/resting-orders/" + placed.path("orderId").asText();
 
         JsonNode cancelled = checked(identified(delete(path), "cancel", "0000123456"), 200);
         assertThat(cancelled.path("status").asText()).isEqualTo("CANCELLED");
         assertThat(cancelled.path("callbackStatus").asText()).isEqualTo("NOT_REQUIRED");
         assertThat(cancelled.path("closedAt").asText()).isNotBlank();
-        assertThat(cancelled.has("tradeId")).isFalse();
 
         JsonNode conflict = checked(identified(delete(path), "cancel-again", "0000123456"), 409);
         assertThat(conflict.path("errorCode").asText()).isEqualTo("ORDER_NOT_WORKING");

@@ -1,11 +1,13 @@
 package com.example.fx.simulator.service;
 
-import com.example.fx.simulator.api.model.LimitOrderEvent;
-import com.example.fx.simulator.api.model.LimitOrderExpiredEvent;
-import com.example.fx.simulator.api.model.LimitOrderStatus;
-import com.example.fx.simulator.api.model.LimitOrderTriggeredEvent;
-import com.example.fx.simulator.config.LimitOrderProperties;
+import com.example.fx.simulator.api.model.RestingOrderEvent;
+import com.example.fx.simulator.api.model.RestingOrderExpiredEvent;
+import com.example.fx.simulator.api.model.RestingOrderStatus;
+import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
+import com.example.fx.simulator.config.RestingOrderProperties;
 import com.example.fx.simulator.domain.TradingModels.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -21,34 +23,36 @@ import org.springframework.web.client.RestClientException;
  * evaluation: an unreachable receiver delays only its own retries, never the matching of other orders.
  */
 @Component
-public class LimitOrderCallbackDispatcher {
-    private static final Logger LOG = LoggerFactory.getLogger(LimitOrderCallbackDispatcher.class);
+public class RestingOrderCallbackDispatcher {
+    private static final Logger LOG = LoggerFactory.getLogger(RestingOrderCallbackDispatcher.class);
 
-    private final LimitOrderStore store;
+    private final RestingOrderStore store;
+    private final ObjectMapper mapper;
     private final RestClient client;
 
-    public LimitOrderCallbackDispatcher(LimitOrderStore store, RestClient.Builder builder,
-                                        LimitOrderProperties properties) {
+    public RestingOrderCallbackDispatcher(RestingOrderStore store, ObjectMapper mapper, RestClient.Builder builder,
+                                        RestingOrderProperties properties) {
         this.store = store;
+        this.mapper = mapper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(properties.callback().timeout());
         factory.setReadTimeout(properties.callback().timeout());
         this.client = builder.requestFactory(factory).build();
     }
 
-    @Scheduled(fixedDelayString = "${simulator.limit-orders.dispatch-interval:200ms}")
+    @Scheduled(fixedDelayString = "${simulator.resting-orders.dispatch-interval:200ms}")
     public void dispatchDueCallbacks() {
         for (DueCallback due : store.dueDeliveries()) {
             deliver(due.delivery(), due.order());
         }
     }
 
-    private void deliver(CallbackDelivery delivery, LimitOrder order) {
+    private void deliver(CallbackDelivery delivery, RestingOrder order) {
         try {
             ResponseEntity<Void> response = client.post()
                     .uri(order.command().callbackUrl())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(event(delivery, order))
+                    .body(mapper.writeValueAsBytes(event(delivery, order)))
                     .retrieve()
                     // Any status is an outcome to record, never an exception to propagate to the scheduler.
                     .onStatus(status -> true, (request, ignored) -> { })
@@ -57,23 +61,23 @@ public class LimitOrderCallbackDispatcher {
                 store.recordDelivered(delivery);
                 return;
             }
-            LOG.warn("Callback for limit order {} refused with {}", order.orderId(), response.getStatusCode());
-        } catch (RestClientException exception) {
-            LOG.warn("Callback for limit order {} could not be delivered", order.orderId(), exception);
+            LOG.warn("Callback for resting order {} refused with {}", order.orderId(), response.getStatusCode());
+        } catch (RestClientException | JsonProcessingException exception) {
+            LOG.warn("Callback for resting order {} could not be delivered", order.orderId(), exception);
         }
         store.recordFailure(delivery);
     }
 
-    private LimitOrderEvent event(CallbackDelivery delivery, LimitOrder order) {
-        LimitOrderCommand command = order.command();
+    private RestingOrderEvent event(CallbackDelivery delivery, RestingOrder order) {
+        RestingOrderCommand command = order.command();
         PricingCommand pricing = command.pricing();
         Identity identity = command.context().identity();
         int attempt = delivery.attempts() + 1;
-        if (order.status() == LimitOrderStatus.TRIGGERED) {
+        if (order.status() == RestingOrderStatus.TRIGGERED) {
             Trade trade = order.trade();
             Price price = trade.price();
             Settlement settlement = trade.settlement();
-            return new LimitOrderTriggeredEvent()
+            return new RestingOrderTriggeredEvent()
                     .eventId(delivery.eventId()).eventType("TRIGGERED").occurredAt(delivery.occurredAt()).attempt(attempt)
                     .orderId(order.orderId()).originalRequestId(command.context().requestId())
                     .channel(identity.channel()).segment(identity.segment()).customerId(identity.customerId())
@@ -86,7 +90,7 @@ public class LimitOrderCallbackDispatcher {
                     .sellCurrency(settlement.sellCurrency()).sellQuantity(settlement.sellQuantity())
                     .spotDate(trade.quote().dates().spotDate()).valueDate(trade.quote().dates().valueDate());
         }
-        return new LimitOrderExpiredEvent()
+        return new RestingOrderExpiredEvent()
                 .eventId(delivery.eventId()).eventType("EXPIRED").occurredAt(delivery.occurredAt()).attempt(attempt)
                 .orderId(order.orderId()).originalRequestId(command.context().requestId())
                 .channel(identity.channel()).segment(identity.segment()).customerId(identity.customerId())

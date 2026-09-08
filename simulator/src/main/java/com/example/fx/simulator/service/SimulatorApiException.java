@@ -102,7 +102,7 @@ public final class SimulatorApiException extends RuntimeException {
                 HttpStatus.NOT_FOUND,
                 "ORDER_NOT_FOUND",
                 "Order not found",
-                "Limit order " + orderId + " does not exist."
+                "Resting order " + orderId + " does not exist."
         );
     }
 
@@ -111,12 +111,21 @@ public final class SimulatorApiException extends RuntimeException {
                 HttpStatus.CONFLICT,
                 "ORDER_NOT_WORKING",
                 "Order not working",
-                "Limit order " + orderId + " is " + status + " and can no longer be cancelled."
+                "Resting order " + orderId + " is " + status + " and can no longer be cancelled."
         );
     }
 
-    public static SimulatorApiException invalidLimitOrder(String detail) {
-        return new SimulatorApiException(HttpStatus.BAD_REQUEST, "INVALID_LIMIT_ORDER", "Invalid limit order", detail);
+    public static SimulatorApiException orderIdInUse(String orderId) {
+        return new SimulatorApiException(
+                HttpStatus.CONFLICT,
+                "ORDER_ID_IN_USE",
+                "Order id in use",
+                "Order " + orderId + " already exists for this customer."
+        );
+    }
+
+    public static SimulatorApiException invalidRestingOrder(String detail) {
+        return new SimulatorApiException(HttpStatus.BAD_REQUEST, "INVALID_RESTING_ORDER", "Invalid resting order", detail);
     }
 
     public static SimulatorApiException callbackUrlNotAllowed(String callbackUrl) {

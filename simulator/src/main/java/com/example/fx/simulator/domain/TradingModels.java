@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import com.example.fx.simulator.api.model.CallbackStatus;
-import com.example.fx.simulator.api.model.LimitOrderStatus;
+import com.example.fx.simulator.api.model.RestingOrderStatus;
 import com.example.fx.simulator.api.model.QuoteStatus;
 import com.example.fx.simulator.api.model.Side;
 import com.example.fx.simulator.api.model.Tenor;
@@ -84,26 +84,32 @@ public final class TradingModels {
     public record BookingResult(Trade trade, boolean created) {}
 
     /** A resting order is a pricing command the simulator re-runs on its own, plus the limit that ends the wait. */
-    public record LimitOrderCommand(PricingCommand pricing, BigDecimal limitPrice, TimeInForce timeInForce,
-                                    OffsetDateTime expiresAt, URI callbackUrl) {
-        public LimitOrderCommand {
+    public record RestingOrderCommand(String orderId, PricingCommand pricing, BigDecimal limitPrice,
+                                      TimeInForce timeInForce, OffsetDateTime expiresAt, URI callbackUrl) {
+        public RestingOrderCommand {
             Objects.requireNonNull(pricing);
             Objects.requireNonNull(callbackUrl);
+            if (orderId == null || !orderId.matches("[A-Za-z0-9._:-]{1,100}")) {
+                throw SimulatorApiException.invalidRestingOrder("orderId is required and must be a valid identifier.");
+            }
             if (pricing.side() == null) {
-                throw SimulatorApiException.invalidLimitOrder("A limit order must specify a side.");
+                throw SimulatorApiException.invalidRestingOrder("A resting order must specify a side.");
             }
             if (limitPrice == null || limitPrice.signum() <= 0) {
-                throw SimulatorApiException.invalidLimitOrder("limitPrice must be positive.");
+                throw SimulatorApiException.invalidRestingOrder("limitPrice must be positive.");
             }
             if (timeInForce == TimeInForce.GOOD_TILL_TIME && expiresAt == null) {
-                throw SimulatorApiException.invalidLimitOrder("GOOD_TILL_TIME requires expiresAt.");
+                throw SimulatorApiException.invalidRestingOrder("GOOD_TILL_TIME requires expiresAt.");
             }
             if (timeInForce == TimeInForce.GOOD_TILL_CANCELLED && expiresAt != null) {
-                throw SimulatorApiException.invalidLimitOrder("GOOD_TILL_CANCELLED must not carry expiresAt.");
+                throw SimulatorApiException.invalidRestingOrder("GOOD_TILL_CANCELLED must not carry expiresAt.");
             }
         }
 
         public RequestContext context() { return pricing.context(); }
+
+        /** An order is named by its caller, so only the pair of customer and orderId is unique. */
+        public RestingOrderKey key() { return new RestingOrderKey(pricing.context().identity().customerId(), orderId); }
 
         /** The limit is reachable when the executable client price is at or through it, on either side. */
         public boolean triggers(BigDecimal clientPrice) {
@@ -113,46 +119,52 @@ public final class TradingModels {
         }
     }
 
-    public record LimitOrder(UUID orderId, LimitOrderCommand command, LimitOrderStatus status,
-                             OffsetDateTime placedAt, OffsetDateTime lastEvaluatedAt, BigDecimal lastEvaluatedPrice,
-                             OffsetDateTime closedAt, Trade trade,
-                             CallbackStatus callbackStatus, int callbackAttempts) {
+    public record RestingOrder(RestingOrderCommand command, RestingOrderStatus status,
+                               OffsetDateTime placedAt, OffsetDateTime lastEvaluatedAt, BigDecimal lastEvaluatedPrice,
+                               OffsetDateTime closedAt, Trade trade,
+                               CallbackStatus callbackStatus, int callbackAttempts) {
 
-        public static LimitOrder working(UUID orderId, LimitOrderCommand command, OffsetDateTime placedAt) {
-            return new LimitOrder(orderId, command, LimitOrderStatus.WORKING, placedAt,
+        public static RestingOrder working(RestingOrderCommand command, OffsetDateTime placedAt) {
+            return new RestingOrder(command, RestingOrderStatus.WORKING, placedAt,
                     null, null, null, null, CallbackStatus.NOT_REQUIRED, 0);
         }
 
-        public boolean working() { return status == LimitOrderStatus.WORKING; }
+        public String orderId() { return command.orderId(); }
+
+        public RestingOrderKey key() { return command.key(); }
+
+        public boolean working() { return status == RestingOrderStatus.WORKING; }
 
         public boolean expiredAt(OffsetDateTime at) {
             return command.timeInForce() == TimeInForce.GOOD_TILL_TIME && !at.isBefore(command.expiresAt());
         }
 
-        public LimitOrder evaluated(OffsetDateTime at, BigDecimal clientPrice) {
-            return new LimitOrder(orderId, command, status, placedAt, at, clientPrice,
+        public RestingOrder evaluated(OffsetDateTime at, BigDecimal clientPrice) {
+            return new RestingOrder(command, status, placedAt, at, clientPrice,
                     closedAt, trade, callbackStatus, callbackAttempts);
         }
 
-        public LimitOrder closed(LimitOrderStatus terminal, OffsetDateTime at, Trade booked, CallbackStatus callback) {
-            return new LimitOrder(orderId, command, terminal, placedAt, lastEvaluatedAt, lastEvaluatedPrice,
+        public RestingOrder closed(RestingOrderStatus terminal, OffsetDateTime at, Trade booked, CallbackStatus callback) {
+            return new RestingOrder(command, terminal, placedAt, lastEvaluatedAt, lastEvaluatedPrice,
                     at, booked, callback, callbackAttempts);
         }
 
-        public LimitOrder withCallback(CallbackStatus next, int attempts) {
-            return new LimitOrder(orderId, command, status, placedAt, lastEvaluatedAt, lastEvaluatedPrice,
+        public RestingOrder withCallback(CallbackStatus next, int attempts) {
+            return new RestingOrder(command, status, placedAt, lastEvaluatedAt, lastEvaluatedPrice,
                     closedAt, trade, next, attempts);
         }
     }
 
-    public record LimitOrderPlacement(LimitOrder order, boolean created) {}
+    public record RestingOrderKey(String customerId, String orderId) {}
 
-    public record DueCallback(CallbackDelivery delivery, LimitOrder order) {}
+    public record RestingOrderPlacement(RestingOrder order, boolean created) {}
+
+    public record DueCallback(CallbackDelivery delivery, RestingOrder order) {}
 
     /** One queued notification. Retries reuse eventId so a receiver can dedupe on it. */
-    public record CallbackDelivery(UUID eventId, UUID orderId, OffsetDateTime occurredAt, int attempts) {
+    public record CallbackDelivery(UUID eventId, RestingOrderKey order, OffsetDateTime occurredAt, int attempts) {
         public CallbackDelivery attempted() {
-            return new CallbackDelivery(eventId, orderId, occurredAt, attempts + 1);
+            return new CallbackDelivery(eventId, order, occurredAt, attempts + 1);
         }
     }
 }

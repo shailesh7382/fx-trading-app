@@ -11,16 +11,16 @@ import java.util.Random;
 import java.util.UUID;
 
 import com.example.fx.simulator.api.model.CallbackStatus;
-import com.example.fx.simulator.api.model.LimitOrderStatus;
+import com.example.fx.simulator.api.model.RestingOrderStatus;
 import com.example.fx.simulator.api.model.Side;
 import com.example.fx.simulator.api.model.Tenor;
 import com.example.fx.simulator.api.model.TimeInForce;
-import com.example.fx.simulator.config.LimitOrderProperties;
+import com.example.fx.simulator.config.RestingOrderProperties;
 import com.example.fx.simulator.config.SettlementProperties;
 import com.example.fx.simulator.config.SimulatorStateProperties;
 import com.example.fx.simulator.domain.TradingModels.DueCallback;
-import com.example.fx.simulator.domain.TradingModels.LimitOrder;
-import com.example.fx.simulator.domain.TradingModels.LimitOrderCommand;
+import com.example.fx.simulator.domain.TradingModels.RestingOrder;
+import com.example.fx.simulator.domain.TradingModels.RestingOrderCommand;
 import com.example.fx.simulator.domain.TradingModels.PricingCommand;
 import com.example.fx.simulator.domain.TradingModels.RequestContext;
 import org.junit.jupiter.api.Test;
@@ -32,58 +32,76 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Drives the resting order lifecycle against a clock the test controls, covering the transitions the
  * HTTP tests cannot reach deterministically: which side triggers, expiry, and callback retry exhaustion.
  */
-class LimitOrderLifecycleTest {
+class RestingOrderLifecycleTest {
 
     private static final Duration BACKOFF = Duration.ofSeconds(1);
     private static final int MAX_ATTEMPTS = 3;
-    private static final URI CALLBACK = URI.create("http://localhost:8080/api/limit-orders/events");
+    private static final URI CALLBACK = URI.create("http://localhost:8080/api/resting-orders/events");
 
     private final MutableClock clock = new MutableClock(Instant.parse("2026-09-08T08:00:00Z"));
     private final SettlementCalculator settlement = new SettlementCalculator();
-    private final LimitOrderProperties properties = new LimitOrderProperties(4, Duration.ofHours(24),
-            new LimitOrderProperties.Callback(List.of("http://localhost:"), MAX_ATTEMPTS, BACKOFF, Duration.ofSeconds(5)));
-    private final LimitOrderStore store = new LimitOrderStore(clock, properties);
+    private final RestingOrderProperties properties = new RestingOrderProperties(4, Duration.ofHours(24),
+            new RestingOrderProperties.Callback(List.of("http://localhost:"), MAX_ATTEMPTS, BACKOFF, Duration.ofSeconds(5)));
+    private final RestingOrderStore store = new RestingOrderStore(clock, properties);
     private final FxPricingEngine pricing = new FxPricingEngine(clock, new Random(42), new FxSwapCurve(),
             new SettlementDateCalculator(new SettlementProperties(Map.of(), Map.of())), settlement, Duration.ofSeconds(30));
     private final SimulatorStateStore trades = new SimulatorStateStore(clock, new SimulatorStateProperties(
             10, 10, 10, Duration.ofMinutes(5), Duration.ofHours(24), Duration.ofHours(24)));
-    private final LimitOrderMonitor monitor = new LimitOrderMonitor(store, trades, pricing, settlement, clock);
-    private final LimitOrderService service = new LimitOrderService(store, pricing, properties);
+    private final RestingOrderMonitor monitor = new RestingOrderMonitor(store, trades, pricing, settlement, clock);
+    private final RestingOrderService service = new RestingOrderService(store, pricing, properties);
 
-    private LimitOrderCommand command(Side side, String limitPrice) {
+    private RestingOrderCommand command(Side side, String limitPrice) {
         return command(side, limitPrice, TimeInForce.GOOD_TILL_CANCELLED, null);
     }
 
-    private LimitOrderCommand command(Side side, String limitPrice, TimeInForce timeInForce, OffsetDateTime expiresAt) {
+    private RestingOrderCommand command(Side side, String limitPrice, TimeInForce timeInForce, OffsetDateTime expiresAt) {
         RequestContext context = new RequestContext("order-" + UUID.randomUUID(), "WEB", "C", "0000123456");
         PricingCommand quantity = new PricingCommand(context, "EURUSD", new BigDecimal("1000000"), "EUR", Tenor.SPOT, side);
-        return new LimitOrderCommand(quantity, new BigDecimal(limitPrice), timeInForce, expiresAt, CALLBACK);
+        return new RestingOrderCommand("ORD-" + UUID.randomUUID(), quantity, new BigDecimal(limitPrice),
+                timeInForce, expiresAt, CALLBACK);
     }
 
-    private LimitOrder place(LimitOrderCommand command) {
-        return service.place(UUID.randomUUID().toString(), command).order();
+    private RestingOrder place(RestingOrderCommand command) {
+        return service.place(command).order();
     }
 
-    private LimitOrder reload(LimitOrder order) {
+    private RestingOrder reload(RestingOrder order) {
         return store.get(order.orderId(), order.command().context().identity());
+    }
+
+    /** Same name, different terms: a second order trying to take a name that is taken. */
+    private RestingOrderCommand withTerms(RestingOrderCommand command, Side side, String limitPrice) {
+        return new RestingOrderCommand(command.orderId(),
+                new PricingCommand(command.context(), command.pricing().currencyPair(), command.pricing().quantity(),
+                        command.pricing().quantityCurrency(), command.pricing().tenor(), side),
+                new BigDecimal(limitPrice), command.timeInForce(), command.expiresAt(), command.callbackUrl());
+    }
+
+    /** Same terms, same name: what a caller retrying a lost placement sends. */
+    private RestingOrderCommand sameOrderAs(RestingOrderCommand command) {
+        return new RestingOrderCommand(command.orderId(),
+                new PricingCommand(new RequestContext("order-" + UUID.randomUUID(), "WEB", "C", "0000123456"),
+                        command.pricing().currencyPair(), command.pricing().quantity(),
+                        command.pricing().quantityCurrency(), command.pricing().tenor(), command.pricing().side()),
+                command.limitPrice(), command.timeInForce(), command.expiresAt(), command.callbackUrl());
     }
 
     @Test
     void triggersOnlyOnceTheMarketReachesTheLimitFromTheOrdersOwnSide() {
         // EURUSD prices around 1.10000, so each pair of limits sits either side of the market.
-        LimitOrder buyThrough = place(command(Side.BUY, "1.20000"));
-        LimitOrder buyAway = place(command(Side.BUY, "1.00000"));
-        LimitOrder sellThrough = place(command(Side.SELL, "1.00000"));
-        LimitOrder sellAway = place(command(Side.SELL, "1.20000"));
+        RestingOrder buyThrough = place(command(Side.BUY, "1.20000"));
+        RestingOrder buyAway = place(command(Side.BUY, "1.00000"));
+        RestingOrder sellThrough = place(command(Side.SELL, "1.00000"));
+        RestingOrder sellAway = place(command(Side.SELL, "1.20000"));
 
         monitor.evaluateWorkingOrders();
 
-        assertThat(reload(buyThrough).status()).isEqualTo(LimitOrderStatus.TRIGGERED);
-        assertThat(reload(sellThrough).status()).isEqualTo(LimitOrderStatus.TRIGGERED);
-        assertThat(reload(buyAway).status()).isEqualTo(LimitOrderStatus.WORKING);
-        assertThat(reload(sellAway).status()).isEqualTo(LimitOrderStatus.WORKING);
+        assertThat(reload(buyThrough).status()).isEqualTo(RestingOrderStatus.TRIGGERED);
+        assertThat(reload(sellThrough).status()).isEqualTo(RestingOrderStatus.TRIGGERED);
+        assertThat(reload(buyAway).status()).isEqualTo(RestingOrderStatus.WORKING);
+        assertThat(reload(sellAway).status()).isEqualTo(RestingOrderStatus.WORKING);
 
-        LimitOrder triggered = reload(buyThrough);
+        RestingOrder triggered = reload(buyThrough);
         assertThat(triggered.trade().price().clientPrice()).isLessThanOrEqualTo(new BigDecimal("1.20000"));
         assertThat(triggered.lastEvaluatedPrice()).isEqualByComparingTo(triggered.trade().price().clientPrice());
         assertThat(triggered.callbackStatus()).isEqualTo(CallbackStatus.PENDING);
@@ -95,13 +113,13 @@ class LimitOrderLifecycleTest {
 
     @Test
     void keepsACancellationWhenEvaluationRunsAfterwards() {
-        LimitOrder order = place(command(Side.BUY, "1.20000"));
+        RestingOrder order = place(command(Side.BUY, "1.20000"));
         store.cancel(order.orderId(), order.command().context().identity());
 
         monitor.evaluateWorkingOrders();
 
-        LimitOrder cancelled = reload(order);
-        assertThat(cancelled.status()).isEqualTo(LimitOrderStatus.CANCELLED);
+        RestingOrder cancelled = reload(order);
+        assertThat(cancelled.status()).isEqualTo(RestingOrderStatus.CANCELLED);
         assertThat(cancelled.trade()).isNull();
         assertThat(cancelled.callbackStatus()).isEqualTo(CallbackStatus.NOT_REQUIRED);
         assertThat(store.dueDeliveries()).isEmpty();
@@ -110,16 +128,16 @@ class LimitOrderLifecycleTest {
     @Test
     void expiresGoodTillTimeOrdersAndQueuesTheirEvent() {
         OffsetDateTime expiresAt = OffsetDateTime.now(clock).plusMinutes(5);
-        LimitOrder order = place(command(Side.BUY, "1.00000", TimeInForce.GOOD_TILL_TIME, expiresAt));
+        RestingOrder order = place(command(Side.BUY, "1.00000", TimeInForce.GOOD_TILL_TIME, expiresAt));
 
         monitor.evaluateWorkingOrders();
-        assertThat(reload(order).status()).isEqualTo(LimitOrderStatus.WORKING);
+        assertThat(reload(order).status()).isEqualTo(RestingOrderStatus.WORKING);
 
         clock.advance(Duration.ofMinutes(5));
         monitor.evaluateWorkingOrders();
 
-        LimitOrder expired = reload(order);
-        assertThat(expired.status()).isEqualTo(LimitOrderStatus.EXPIRED);
+        RestingOrder expired = reload(order);
+        assertThat(expired.status()).isEqualTo(RestingOrderStatus.EXPIRED);
         assertThat(expired.closedAt()).isEqualTo(expiresAt);
         assertThat(expired.trade()).isNull();
         assertThat(store.dueDeliveries()).singleElement()
@@ -128,7 +146,7 @@ class LimitOrderLifecycleTest {
 
     @Test
     void holdsRetriesForTheBackoffAndGivesUpAtTheAttemptLimit() {
-        LimitOrder order = place(command(Side.BUY, "1.20000"));
+        RestingOrder order = place(command(Side.BUY, "1.20000"));
         monitor.evaluateWorkingOrders();
 
         DueCallback first = store.dueDeliveries().get(0);
@@ -149,51 +167,66 @@ class LimitOrderLifecycleTest {
         DueCallback third = store.dueDeliveries().get(0);
         store.recordFailure(third.delivery());
 
-        LimitOrder failed = reload(order);
+        RestingOrder failed = reload(order);
         assertThat(failed.callbackStatus()).isEqualTo(CallbackStatus.FAILED);
         assertThat(failed.callbackAttempts()).isEqualTo(MAX_ATTEMPTS);
-        assertThat(failed.status()).as("a failed notification does not undo the fill").isEqualTo(LimitOrderStatus.TRIGGERED);
+        assertThat(failed.status()).as("a failed notification does not undo the fill").isEqualTo(RestingOrderStatus.TRIGGERED);
         clock.advance(Duration.ofHours(1));
         assertThat(store.dueDeliveries()).isEmpty();
     }
 
     @Test
-    void scopesIdempotencyToTheOrdersTermsRatherThanItsRequestId() {
-        String key = UUID.randomUUID().toString();
-        LimitOrder placed = service.place(key, command(Side.BUY, "1.00000")).order();
+    void replaysAnOrderIdCarryingTheSameTermsAndRejectsOneCarryingOthers() {
+        RestingOrderCommand original = command(Side.BUY, "1.00000");
+        RestingOrder placed = place(original);
 
-        var replay = service.place(key, command(Side.BUY, "1.000000"));
+        // Only the requestId differs, which is what a retry of a lost response looks like.
+        var replay = service.place(sameOrderAs(original));
         assertThat(replay.created()).isFalse();
         assertThat(replay.order().orderId()).isEqualTo(placed.orderId());
+        assertThat(replay.order().placedAt()).isEqualTo(placed.placedAt());
 
-        assertThatThrownBy(() -> service.place(key, command(Side.BUY, "1.01000")))
+        assertThatThrownBy(() -> service.place(withTerms(original, Side.BUY, "1.01000")))
                 .isInstanceOf(SimulatorApiException.class)
-                .extracting("errorCode").isEqualTo("IDEMPOTENCY_CONFLICT");
-        assertThatThrownBy(() -> service.place(key, command(Side.SELL, "1.00000")))
+                .extracting("errorCode").isEqualTo("ORDER_ID_IN_USE");
+        assertThatThrownBy(() -> service.place(withTerms(original, Side.SELL, "1.00000")))
                 .isInstanceOf(SimulatorApiException.class)
-                .extracting("errorCode").isEqualTo("IDEMPOTENCY_CONFLICT");
+                .extracting("errorCode").isEqualTo("ORDER_ID_IN_USE");
+    }
+
+    @Test
+    void scopesAnOrderIdToItsOwnCustomer() {
+        RestingOrderCommand original = command(Side.BUY, "1.00000");
+        place(original);
+
+        RequestContext elsewhere = new RequestContext("order-" + UUID.randomUUID(), "WEB", "C", "0000654321");
+        RestingOrder other = place(new RestingOrderCommand(original.orderId(),
+                new PricingCommand(elsewhere, "EURUSD", new BigDecimal("1000000"), "EUR", Tenor.SPOT, Side.BUY),
+                new BigDecimal("1.00000"), TimeInForce.GOOD_TILL_CANCELLED, null, CALLBACK));
+        assertThat(other.orderId()).isEqualTo(original.orderId());
+        assertThat(other.command().context().identity().customerId()).isEqualTo("0000654321");
     }
 
     @Test
     void refusesOrdersItCouldNeitherPriceNorNotify() {
         RequestContext context = new RequestContext("unsupported", "WEB", "C", "0000123456");
         PricingCommand unsupported = new PricingCommand(context, "AAAQQQ", new BigDecimal("1000000"), "AAA", Tenor.SPOT, Side.BUY);
-        assertThatThrownBy(() -> service.place(UUID.randomUUID().toString(), new LimitOrderCommand(
-                unsupported, new BigDecimal("1.10000"), TimeInForce.GOOD_TILL_CANCELLED, null, CALLBACK)))
+        assertThatThrownBy(() -> service.place(new RestingOrderCommand(
+                "ORD-unsupported", unsupported, new BigDecimal("1.10000"), TimeInForce.GOOD_TILL_CANCELLED, null, CALLBACK)))
                 .isInstanceOf(SimulatorApiException.class)
                 .extracting("errorCode").isEqualTo("UNSUPPORTED_INSTRUMENT");
 
-        LimitOrderCommand elsewhere = new LimitOrderCommand(command(Side.BUY, "1.10000").pricing(),
+        RestingOrderCommand elsewhere = new RestingOrderCommand("ORD-elsewhere", command(Side.BUY, "1.10000").pricing(),
                 new BigDecimal("1.10000"), TimeInForce.GOOD_TILL_CANCELLED, null,
                 URI.create("http://evil.example.com/events"));
-        assertThatThrownBy(() -> service.place(UUID.randomUUID().toString(), elsewhere))
+        assertThatThrownBy(() -> service.place(elsewhere))
                 .isInstanceOf(SimulatorApiException.class)
                 .extracting("errorCode").isEqualTo("CALLBACK_URL_NOT_ALLOWED");
 
-        assertThatThrownBy(() -> service.place(UUID.randomUUID().toString(), command(Side.BUY, "1.10000",
+        assertThatThrownBy(() -> service.place(command(Side.BUY, "1.10000",
                 TimeInForce.GOOD_TILL_TIME, OffsetDateTime.now(clock).minusMinutes(1))))
                 .isInstanceOf(SimulatorApiException.class)
-                .extracting("errorCode").isEqualTo("INVALID_LIMIT_ORDER");
+                .extracting("errorCode").isEqualTo("INVALID_RESTING_ORDER");
     }
 
     @Test

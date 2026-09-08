@@ -5,9 +5,9 @@ import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties("simulator.limit-orders")
-public record LimitOrderProperties(int maxOrders, Duration retention, Callback callback) {
-    public LimitOrderProperties {
+@ConfigurationProperties("simulator.resting-orders")
+public record RestingOrderProperties(int maxOrders, Duration retention, Callback callback) {
+    public RestingOrderProperties {
         if (maxOrders <= 0 || retention == null || retention.isNegative() || retention.isZero() || callback == null) {
             throw new IllegalArgumentException("Positive order capacity and retention, and a callback section, are required.");
         }
