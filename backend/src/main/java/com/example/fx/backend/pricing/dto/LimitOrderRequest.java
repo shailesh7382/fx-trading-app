@@ -18,6 +18,10 @@ public class LimitOrderRequest {
     private String sales;
     private String comments;
     private String trader;
+    private String requestId;
+    private String channel;
+    private String segment;
+    private String customerId;
 
     public String getCcyPair() {
         return ccyPair;
@@ -138,5 +142,13 @@ public class LimitOrderRequest {
     public void setTrader(String trader) {
         this.trader = trader;
     }
-}
 
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
+    public String getSegment() { return segment; }
+    public void setSegment(String segment) { this.segment = segment; }
+    public String getCustomerId() { return customerId; }
+    public void setCustomerId(String customerId) { this.customerId = customerId; }
+}

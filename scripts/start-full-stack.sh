@@ -31,7 +31,7 @@ start_service frontend "$UI_DIR" "npm run dev -- --host 0.0.0.0 --port 5173" 120
 
 log_msg INFO "Full FX trading stack started successfully."
 log_msg INFO "Simulator API:     http://localhost:8090/swagger-ui.html"
-log_msg INFO "Backend service:   http://localhost:8080/api/fxprices"
+log_msg INFO "Backend service:   http://localhost:8080/api/rates"
 log_msg INFO "Trading UI:        http://localhost:5173"
 log_msg INFO "H2 TCP server:     tcp://localhost:9092"
 log_msg INFO "Use scripts/status-full-stack.sh to inspect running services."

@@ -44,6 +44,7 @@ stateDiagram-v2
     [*] --> WORKING: POST /api/v1/resting-orders
     WORKING --> TRIGGERED: market reached the limit
     WORKING --> EXPIRED: GOOD_TILL_TIME passed
+    WORKING --> WORKING: PUT mutable terms
     WORKING --> CANCELLED: DELETE /api/v1/resting-orders/{orderId}
     TRIGGERED --> [*]
     EXPIRED --> [*]
@@ -52,7 +53,7 @@ stateDiagram-v2
     note right of TRIGGERED
         A trade exists. The callback
         carries its tradeId;
-        the order does not.
+        the order exposes it too.
     end note
     note right of EXPIRED
         No trade. Callback sent.
@@ -195,7 +196,14 @@ retry; everything else must match, or it is a different order and gets the `409`
 The name is held for as long as the order is retained, which outlasts the order closing. After that the
 `orderId` is free again.
 
-## 3. Watch the order
+## 3. Amend a working order
+
+`PUT /api/v1/resting-orders/{orderId}` atomically replaces `quantity`, `limitPrice`, `timeInForce`, and
+`expiresAt`. Identification in the body must match the order. Instrument, side, callback URL, original request
+identity, and placement timestamp are immutable. The last evaluation is cleared because it described the old
+terms, and a terminal order returns `409`.
+
+## 4. Watch the order
 
 ```bash
 curl "http://localhost:8090/api/v1/resting-orders/ORD-20260908-000123" \
@@ -218,8 +226,8 @@ A working order reports its most recent evaluation, so you can see why it has no
 }
 ```
 
-A closed order adds `closedAt`. It never describes the fill — no `tradeId`, no executed price. The order
-resource is about the order; the execution is described by the callback event and by the trade itself:
+A closed order adds `closedAt`. A triggered order also carries `tradeId`, which lets clients recover the
+booked trade even if callback delivery fails. Execution economics remain on the callback event and trade:
 
 ```json
 {
@@ -229,6 +237,7 @@ resource is about the order; the execution is described by the callback event an
   "lastEvaluatedAt": "2026-09-08T01:38:52.207839Z",
   "lastEvaluatedPrice": 1.10167,
   "closedAt": "2026-09-08T01:38:52.207839Z",
+  "tradeId": "fec7de17-d1f1-4338-9a68-247cb1aee0a7",
   "callbackStatus": "DELIVERED",
   "callbackAttempts": 1
 }
@@ -236,7 +245,7 @@ resource is about the order; the execution is described by the callback event an
 
 Polling is only for inspection. **The callback is how you learn the outcome** — you never have to poll for it.
 
-## 4. Receive the callback
+## 5. Receive the callback
 
 When the order becomes `TRIGGERED` or `EXPIRED`, the simulator POSTs a `RestingOrderEvent` to your
 `callbackUrl` as `application/json`. Reply with any `2xx`; the body is ignored.
@@ -312,8 +321,7 @@ sequenceDiagram
   two deliveries as two fills.
 - Backoff doubles between attempts. After the configured attempt limit the order's `callbackStatus`
   becomes `FAILED` — the fill still stands, only the notification gave up. Treat `FAILED` as an alert that
-  needs a human: the order will tell you it reached `TRIGGERED`, but since it carries no `tradeId`,
-  identifying the trade means reconciling out of band.
+  needs a human: read the triggered order's `tradeId` and reconcile it through the booking API.
 - Delivery runs separately from evaluation, so a slow endpoint delays only its own retries.
 - The order itself always shows where delivery stands:
 
@@ -326,7 +334,7 @@ sequenceDiagram
 
 Your endpoint should be quick and idempotent. Acknowledge first, then do your own work.
 
-## 5. Fetch the trade
+## 6. Fetch the trade
 
 The event's `tradeId` is how you reach the trade — an ordinary booked trade, retrievable through the normal
 booking endpoint with the same identification headers:
@@ -339,10 +347,10 @@ curl "http://localhost:8090/api/v1/bookings/$TRADE_ID" \
   -H 'X-Customer-Id: 0000123456'
 ```
 
-The trade is registered *before* the event is queued, so a `tradeId` you receive in a callback is always
-retrievable. Keep it: the order will not give it to you again.
+The trade is registered *before* the event is queued, so a `tradeId` from either the callback or the triggered
+order is always retrievable.
 
-## 6. Cancel
+## 7. Cancel
 
 ```bash
 curl -X DELETE "http://localhost:8090/api/v1/resting-orders/ORD-20260908-000123" \

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FX Simulator API
-  version: 2.4.0
+  version: 2.5.0
   description: |
     Contract for requesting executable FX prices and booking simulated trades.
     A one-way request returns one flat executable price; a two-way request returns flat BUY and SELL fields.
@@ -291,6 +291,40 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      tags: [Resting Orders]
+      operationId: amendRestingOrder
+      summary: Amend a working resting order
+      description: |
+        Atomically replaces the mutable terms of a WORKING order while preserving its orderId, original
+        request identity, instrument, side, callback URL, and placement timestamp. Quantity, limit price,
+        and time in force are replaced together. The latest evaluation is cleared because it described the
+        previous terms. A terminal order returns 409.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestingOrderAmendRequest'
+      responses:
+        '200':
+          description: Working order amended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestingOrder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         default:
           $ref: '#/components/responses/Problem'
 components:
@@ -672,14 +706,38 @@ components:
           $ref: '#/components/schemas/Timestamp'
         callbackUrl:
           $ref: '#/components/schemas/CallbackUrl'
+    RestingOrderAmendRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Complete replacement for a working order's mutable terms. Identification must match the order.
+        GOOD_TILL_TIME requires expiresAt strictly in the future; GOOD_TILL_CANCELLED must omit it.
+      required: [requestId, channel, segment, customerId, quantity, limitPrice, timeInForce]
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        channel:
+          $ref: '#/components/schemas/Channel'
+        segment:
+          $ref: '#/components/schemas/Segment'
+        customerId:
+          $ref: '#/components/schemas/CustomerId'
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+        limitPrice:
+          $ref: '#/components/schemas/Rate'
+        timeInForce:
+          $ref: '#/components/schemas/TimeInForce'
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
     RestingOrder:
       type: object
       additionalProperties: false
       description: |
         lastEvaluatedAt and lastEvaluatedPrice report the most recent evaluation, so a working order shows
         why it has not triggered, and closedAt is set once the order leaves WORKING. The order carries no
-        execution detail: a TRIGGERED order's fill is described by its callback event and by the trade it
-        booked, which the event identifies.
+        execution price detail: a TRIGGERED order's fill is described by its callback event and by the trade
+        identified by tradeId. Exposing that identifier lets a receiver reconcile safely after downtime.
       required: [requestId, channel, segment, customerId, originalRequestId, responseId, responseAt, orderId, currencyPair, quantity, quantityCurrency, tenor, side, limitPrice, timeInForce, status, placedAt, callbackUrl, callbackStatus, callbackAttempts]
       properties:
         requestId:
@@ -724,6 +782,8 @@ components:
           $ref: '#/components/schemas/Rate'
         closedAt:
           $ref: '#/components/schemas/Timestamp'
+        tradeId:
+          $ref: '#/components/schemas/Identifier'
         callbackUrl:
           $ref: '#/components/schemas/CallbackUrl'
         callbackStatus:

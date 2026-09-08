@@ -25,12 +25,12 @@ export async function loginUser(credentials: Credentials): Promise<Authenticated
 }
 
 export async function fetchFxPrices(): Promise<FxRate[]> {
-  const response = await api.get<FxRate[]>('/fxprices');
+  const response = await api.get<FxRate[]>('/rates');
   return response.data;
 }
 
 export async function fetchFxGrid(params: Record<string, unknown> = {}): Promise<FxRate[]> {
-  const response = await api.get<FxRate[]>('/fxprices/grid', { params });
+  const response = await api.get<FxRate[]>('/rates/grid', { params });
   return response.data;
 }
 
@@ -44,7 +44,7 @@ export async function fetchLookup(path: string, fallback: LookupItem[]): Promise
 }
 
 export async function submitTrade(payload: TradeDraft): Promise<Trade> {
-  const response = await api.post<Trade>('/bookTrade', payload);
+  const response = await api.post<Trade>('/trades', payload);
   return response.data;
 }
 
@@ -54,7 +54,7 @@ export async function fetchTrades(): Promise<Trade[]> {
 }
 
 export async function fetchLimitOrders(params: Record<string, unknown> = {}): Promise<LimitOrder[]> {
-  const response = await api.get<LimitOrder[]>('/limit-orders', { params });
+  const response = await api.get<LimitOrder[]>('/resting-orders', { params });
   return response.data;
 }
 
@@ -66,7 +66,7 @@ export async function fetchNotifications(
 }
 
 export async function submitLimitOrder(payload: LimitOrderDraft): Promise<LimitOrder> {
-  const response = await api.post<LimitOrder>('/limit-orders', payload);
+  const response = await api.post<LimitOrder>('/resting-orders', payload);
   return response.data;
 }
 
@@ -74,18 +74,18 @@ export async function amendLimitOrder(
   orderId: string,
   payload: LimitOrderAmendment
 ): Promise<LimitOrder> {
-  const response = await api.put<LimitOrder>(`/limit-orders/${orderId}`, payload);
+  const response = await api.put<LimitOrder>(`/resting-orders/${orderId}`, payload);
   return response.data;
 }
 
 export async function cancelLimitOrder(orderId: string): Promise<LimitOrder> {
-  const response = await api.post<LimitOrder>(`/limit-orders/${orderId}/cancel`);
+  const response = await api.delete<LimitOrder>(`/resting-orders/${orderId}`);
   return response.data;
 }
 
 export function extractApiMessage(error: unknown, fallbackMessage: string): string {
-  if (axios.isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || error.message || fallbackMessage;
+  if (axios.isAxiosError<{ message?: string; detail?: string; errorCode?: string }>(error)) {
+    return error.response?.data?.detail || error.response?.data?.message || error.message || fallbackMessage;
   }
 
   if (error instanceof Error) {

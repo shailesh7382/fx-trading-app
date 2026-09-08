@@ -4,12 +4,14 @@ This repository contains a multi-service FX trading demo stack:
 
 - `open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
 - `simulator` — executable FX pricing, idempotent trade booking, and resting orders
-- `backend` — authentication, pricing API, JMS subscriber, legacy market data model, and H2 TCP server
+- `backend` — authentication, a REST workspace API, generated simulator clients, callback reconciliation, and H2 persistence
 - `frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
 - `distribution` — packages every service and its operating scripts into one tarball
 
-The backend has intentionally not been connected to the simulator yet. It continues to use its existing
-JMS integration until the backend migration is implemented separately.
+The backend is integrated with the simulator exclusively through HTTP interfaces generated from the authored
+OpenAPI contract. It requests executable prices, books them with idempotency keys, delegates resting-order
+placement/amendment/cancellation, receives terminal callbacks, and reconciles missed callbacks by trade ID.
+The former JMS/local market-data engine and the unused UI streaming abstraction have been removed.
 
 ## Simulator API
 
@@ -19,7 +21,7 @@ The simulator runs on port `8090` and exposes the authored contract at:
 - OpenAPI YAML: `http://localhost:8090/openapi/fx-simulator-api.yaml`
 - Pricing: `POST /api/v1/pricing/quotes` and `GET /api/v1/pricing/quotes/{quoteId}`
 - Booking: `POST /api/v1/bookings` and `GET /api/v1/bookings/{tradeId}`
-- Resting orders: `POST /api/v1/resting-orders`, `GET /api/v1/resting-orders/{orderId}`, `DELETE /api/v1/resting-orders/{orderId}`
+- Resting orders: `POST /api/v1/resting-orders`, `GET/PUT/DELETE /api/v1/resting-orders/{orderId}`
 
 Pricing supports `ONE_WAY` requests with flat `side`, `coverPrice`, `clientPrice`, and `swapPoints` response
 fields. `TWO_WAY` requests return flat `buy*` and `sell*` price fields. Every request carries channel, segment,
@@ -35,8 +37,8 @@ repeating the same name and terms replays the original order, and reusing the na
 409. It rests until the executable client price reaches its limit, its `GOOD_TILL_TIME` expiry passes, or it
 is cancelled. Working orders are re-priced on a fixed interval, so a fill takes the price quoted at the
 evaluation that triggered it, never the limit itself. A triggered order books a trade
-retrievable at `/api/v1/bookings/{tradeId}`; the order resource itself carries no execution detail, so the
-event and the trade are what describe the fill.
+retrievable at `/api/v1/bookings/{tradeId}`. A triggered order exposes `tradeId` for recovery, while the event
+and trade remain authoritative for execution price and settlement detail.
 
 When an order becomes `TRIGGERED` or `EXPIRED`, the simulator POSTs a `RestingOrderEvent` to the order's
 `callbackUrl` — the contract declares this as an OpenAPI `callbacks` operation on the placement endpoint.
@@ -57,8 +59,23 @@ simulator.resting-orders.callback.max-attempts=5
 simulator.resting-orders.callback.initial-backoff=1s
 ```
 
-The default prefix points at the backend's origin, but the backend does not expose a receiving endpoint yet —
-that arrives with the backend migration described above.
+The default prefix points at the backend receiver at `POST /api/resting-orders/events`. Delivery is deduplicated
+by `eventId`; the backend also polls active order resources so it can recover the booked trade if callback
+delivery was interrupted.
+
+## Backend workspace API
+
+The UI uses these backend endpoints on port `8080`:
+
+- `GET /api/rates` and `GET /api/rates/grid` — fresh two-way simulator quotes with quote/response IDs,
+  cover prices, client prices, swap points, spot/value dates, and expiry
+- `GET/POST /api/trades` — locally indexed trade history and contract-driven quote-then-book execution
+- `GET/POST /api/resting-orders`, `PUT/DELETE /api/resting-orders/{orderId}` — persisted workspace views backed
+  by the simulator lifecycle
+- `POST /api/resting-orders/events` — at-least-once terminal callback receiver
+
+Client connection details, business identity defaults, instrument universe, timeouts, and callback URL are
+configured under `simulator.client.*` in `backend/src/main/resources/application.properties`.
 
 The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
 during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under

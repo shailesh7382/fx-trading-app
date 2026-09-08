@@ -13,8 +13,6 @@ export interface WorkspaceContextValue {
   rates: NormalizedRate[];
   isLoading: boolean;
   isDemo: boolean;
-  isRatesStreaming: boolean;
-  setRatesStreaming: (streaming: boolean) => void;
   error: string;
   limitOrders: LimitOrder[];
   notifications: AppNotification[];
@@ -47,8 +45,8 @@ function normalizeRates(rawRates: FxRate[], previousRates: NormalizedRate[] = []
       mid: Number(((bid + ask) / 2).toFixed(bid > 20 ? 3 : 5)),
       spreadPips: Number((((ask - bid) || 0) * (bid > 20 ? 100 : 10000)).toFixed(1)),
       updatedAt: rate.updatedAt || new Date().toISOString(),
-      source: rate.source || 'STREAM',
-      status: rate.status || 'LIVE',
+      source: rate.source || 'SIMULATOR',
+      status: rate.status || 'ACTIVE',
       bidDelta: previous ? Number((bid - previous.bid).toFixed(bid > 20 ? 3 : 5)) : 0,
       askDelta: previous ? Number((ask - previous.ask).toFixed(bid > 20 ? 3 : 5)) : 0,
     };
@@ -80,7 +78,6 @@ export default function useWorkspaceData({
   const [rates, setRates] = useState<NormalizedRate[]>(() => normalizeRates(getFallbackRates()));
   const [isLoading, setIsLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
-  const [isRatesStreaming, setRatesStreaming] = useState(false);
   const [error, setError] = useState('');
   const [limitOrders, setLimitOrders] = useState<LimitOrder[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -150,31 +147,20 @@ export default function useWorkspaceData({
   }, [refresh]);
 
   useEffect(() => {
-    if (!isRatesStreaming) {
-      return undefined;
-    }
-
-    refresh({ forceRates: true });
-    return undefined;
-  }, [isRatesStreaming, refresh]);
-
-  useEffect(() => {
     if (!autoRefresh) {
       return undefined;
     }
 
     const intervalId = window.setInterval(() => {
-      refresh({ forceRates: isRatesStreaming });
+      refresh({ forceRates: true });
     }, intervalMs);
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, intervalMs, isRatesStreaming, refresh]);
+  }, [autoRefresh, intervalMs, refresh]);
 
   return {
     rates,
     isLoading,
     isDemo,
-    isRatesStreaming,
-    setRatesStreaming,
     error,
     limitOrders,
     notifications,

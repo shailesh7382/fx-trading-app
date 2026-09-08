@@ -1,10 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { fetchTrades, loginUser, submitTrade } from '@/shared/api/client';
-import { createDemoUser, sampleTrades } from '@/shared/demo/demoData';
+import { createDemoUser } from '@/shared/demo/demoData';
 import type { AuthenticatedUser, Credentials, Trade, TradeDraft } from '@/shared/types';
 
 const USER_STORAGE_KEY = 'fx-trading-app:user';
-const TRADE_STORAGE_KEY = 'fx-trading-app:trades';
 
 export interface UserContextValue {
   userDetails: AuthenticatedUser | null;
@@ -55,9 +54,7 @@ function UserProvider({ children }: { children: React.ReactNode }) {
   const [userDetails, setUserDetails] = useState<AuthenticatedUser | null>(() =>
     readJsonStorage<AuthenticatedUser | null>(sessionStorage, USER_STORAGE_KEY, null)
   );
-  const [trades, setTrades] = useState<Trade[]>(() =>
-    readJsonStorage<Trade[]>(localStorage, TRADE_STORAGE_KEY, sampleTrades)
-  );
+  const [trades, setTrades] = useState<Trade[]>([]);
 
   useEffect(() => {
     if (userDetails) {
@@ -67,10 +64,6 @@ function UserProvider({ children }: { children: React.ReactNode }) {
 
     sessionStorage.removeItem(USER_STORAGE_KEY);
   }, [userDetails]);
-
-  useEffect(() => {
-    localStorage.setItem(TRADE_STORAGE_KEY, JSON.stringify(trades));
-  }, [trades]);
 
   const syncTrades = useCallback(async () => {
     try {
@@ -105,23 +98,12 @@ function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const bookTrade = useCallback(async (tradeDraft: TradeDraft) => {
-    let bookedTrade: Trade;
-
-    try {
-      bookedTrade = await submitTrade({
-        ...tradeDraft,
-        executionType: tradeDraft.executionType || 'MARKET',
-      });
-    } catch {
-      bookedTrade = {
-        ...tradeDraft,
-        id: tradeDraft.id || `FX-${Date.now()}`,
-        status: 'BOOKED',
-        bookingMode: 'local',
-        executionType: tradeDraft.executionType || 'MARKET',
-        bookedAt: new Date().toISOString(),
-      };
-    }
+    const bookedTrade = await submitTrade({
+      ...tradeDraft,
+      requestId: tradeDraft.requestId || crypto.randomUUID(),
+      idempotencyKey: tradeDraft.idempotencyKey || crypto.randomUUID(),
+      executionType: tradeDraft.executionType || 'MARKET',
+    });
 
     setTrades((currentTrades) => mergeTrades([bookedTrade], currentTrades));
     return bookedTrade;

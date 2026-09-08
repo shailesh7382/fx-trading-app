@@ -81,6 +81,20 @@ public class RestingOrderStore {
         return close(order, RestingOrderStatus.CANCELLED, OffsetDateTime.now(clock), null, CallbackStatus.NOT_REQUIRED);
     }
 
+    public synchronized RestingOrder amend(RestingOrderCommand amended, Identity identity) {
+        RestingOrder order = get(amended.orderId(), identity);
+        if (!order.working()) {
+            throw SimulatorApiException.orderNotWorking(amended.orderId(), order.status());
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (amended.timeInForce() == TimeInForce.GOOD_TILL_TIME && !amended.expiresAt().isAfter(now)) {
+            throw SimulatorApiException.invalidRestingOrder("expiresAt must be in the future.");
+        }
+        RestingOrder replacement = order.amended(amended);
+        orders.replace(order.key(), replacement);
+        return replacement;
+    }
+
     public synchronized List<RestingOrder> workingOrders() {
         purge();
         return orders.values().stream().filter(RestingOrder::working).toList();

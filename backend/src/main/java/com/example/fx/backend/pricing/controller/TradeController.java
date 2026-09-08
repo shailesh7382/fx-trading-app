@@ -25,9 +25,8 @@ public class TradeController {
         return tradeService.getTrades();
     }
 
-    @PostMapping("/bookTrade")
+    @PostMapping("/trades")
     public Trade bookTrade(@RequestBody Trade tradeDraft) {
         return tradeService.bookTrade(tradeDraft);
     }
 }
-

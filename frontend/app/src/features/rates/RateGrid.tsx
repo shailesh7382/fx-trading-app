@@ -751,7 +751,7 @@ function RateGrid() {
         >
           {displayedCards.map(({ quote: rate, selection, index }) => {
             const { base, terms } = getCurrencyCodes(selection.ccyPair);
-            const valueDate = calculateSettlementDate(new Date().toISOString(), selection.tenor);
+            const valueDate = rate.valueDate || calculateSettlementDate(new Date().toISOString(), selection.tenor);
             const selectedDealCurrency = dealCurrencies[index] || base;
             const selectedDealQuantity = dealQuantities[index] || getInitialDealQuantity(rate);
             const bookingQuantity = Number.parseInt(selectedDealQuantity, 10) || Number.parseInt(getInitialDealQuantity(rate), 10);
@@ -821,9 +821,20 @@ function RateGrid() {
                       </Stack>
                     </Stack>
 
+                    <Stack direction="row" spacing={0.6} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                      <Chip label={`Spot ${rate.spotDate || '—'}`} size="small" variant="outlined" />
+                      <Chip label={`Value ${rate.valueDate || valueDate}`} size="small" variant="outlined" />
+                      <Tooltip title={rate.quoteId || 'Simulator quote'}>
+                        <Chip label={`Quote ${(rate.quoteId || 'pending').slice(0, 8)}`} size="small" />
+                      </Tooltip>
+                    </Stack>
+
                     <Box sx={{ display: 'grid', gap: 0.8, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                       <Paper sx={getQuoteTileStyles('#F3F6F9', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.bid)}>
                         <RateDisplay value={rate.bid} accentColor="primary.dark" />
+                        <Typography variant="caption" color="text.secondary">
+                          Cover {formatRate(rate.bidCoverPrice || rate.bid)} · Pts {rate.bidPoints ?? 0}
+                        </Typography>
                         <Button
                           fullWidth
                           color="primary"
@@ -841,6 +852,9 @@ function RateGrid() {
 
                       <Paper sx={getQuoteTileStyles('#EDF4FA', flashSignals[`${rate.ccyPair}-${rate.tenor}`]?.ask)}>
                         <RateDisplay value={rate.ask} accentColor="primary.main" />
+                        <Typography variant="caption" color="text.secondary">
+                          Cover {formatRate(rate.askCoverPrice || rate.ask)} · Pts {rate.askPoints ?? 0}
+                        </Typography>
                         <Button
                           fullWidth
                           color="primary"

@@ -236,6 +236,6 @@ class SimulatorApiIntegrationTest {
     @Test
     void servesAuthoritativeContract() throws Exception {
         mvc.perform(get("/openapi/fx-simulator-api.yaml")).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("version: 2.4.0")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("version: 2.5.0")));
     }
 }

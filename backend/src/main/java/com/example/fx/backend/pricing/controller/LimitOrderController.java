@@ -8,6 +8,7 @@ import com.example.fx.backend.pricing.service.LimitOrderService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/limit-orders")
+@RequestMapping("/api/resting-orders")
 public class LimitOrderController {
 
     private final LimitOrderService limitOrderService;
@@ -44,9 +45,8 @@ public class LimitOrderController {
         return limitOrderService.amendLimitOrder(orderId, request);
     }
 
-    @PostMapping("/{orderId}/cancel")
+    @DeleteMapping("/{orderId}")
     public LimitOrder cancelLimitOrder(@PathVariable String orderId) {
         return limitOrderService.cancelLimitOrder(orderId);
     }
 }
-

@@ -32,4 +32,17 @@ public class RestingOrderService {
     public RestingOrder cancel(String orderId, RequestContext context) {
         return store.cancel(orderId, context.identity());
     }
+
+    public RestingOrder amend(String orderId, RestingOrderAmendment amendment) {
+        RestingOrder existing = store.get(orderId, amendment.context().identity());
+        PricingCommand current = existing.command().pricing();
+        // Preserve creation context and immutable instrument terms; only the contract's mutable terms change.
+        PricingCommand repriced = new PricingCommand(current.context(), current.currencyPair(), amendment.quantity(),
+                current.quantityCurrency(), current.tenor(), current.side());
+        RestingOrderCommand replacement = new RestingOrderCommand(orderId, repriced, amendment.limitPrice(),
+                amendment.timeInForce(), amendment.expiresAt(), existing.command().callbackUrl());
+        // Reject unpriceable amendments before mutating the working order.
+        pricing.price(repriced);
+        return store.amend(replacement, amendment.context().identity());
+    }
 }

@@ -2,7 +2,7 @@ package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.WorkspaceNotification;
 import com.example.fx.backend.pricing.dto.WorkspaceNotificationResponse;
-import com.example.fx.backend.pricing.model.FxPrice;
+import com.example.fx.backend.pricing.dto.FxPriceDTO;
 import com.example.fx.backend.pricing.model.LimitOrder;
 import com.example.fx.backend.pricing.model.LimitOrderStatus;
 import com.example.fx.backend.pricing.model.Trade;
@@ -72,25 +72,25 @@ public class NotificationService {
     }
 
     private List<WorkspaceNotification> buildMarketCommentaryNotifications(LocalDateTime now) {
-        List<FxPrice> displayPrices = new ArrayList<>(compressLatestPrices(fxPriceService.getAllPrices()).values());
+        List<FxPriceDTO> displayPrices = new ArrayList<>(compressLatestPrices(fxPriceService.getAllPrices()).values());
         if (displayPrices.isEmpty()) {
             return List.of();
         }
 
         List<WorkspaceNotification> notifications = new ArrayList<>();
-        FxPrice widestSpread = displayPrices.stream()
+        FxPriceDTO widestSpread = displayPrices.stream()
                 .max(Comparator.comparingDouble(this::getSpreadPips))
                 .orElse(null);
-        FxPrice deepestLiquidity = displayPrices.stream()
-                .max(Comparator.comparingDouble(FxPrice::getQty))
+        FxPriceDTO deepestLiquidity = displayPrices.stream()
+                .max(Comparator.comparing(FxPriceDTO::getQty))
                 .orElse(null);
 
         if (widestSpread != null) {
             notifications.add(buildMarketNotification(
                     "MARKET-SPREAD-" + instrumentKey(widestSpread),
                     widestSpread.getCcyPair() + " shows the widest live spread",
-                    widestSpread.getTenorLabel() + " spread is " + formatSpread(widestSpread) + " across " + formatQuantity(widestSpread.getQty())
-                            + " with " + defaultText(widestSpread.getSource() == null ? null : widestSpread.getSource().name(), "STREAM") + " pricing.",
+                    widestSpread.getTenor() + " spread is " + formatSpread(widestSpread) + " across " + formatQuantity(widestSpread.getQty())
+                            + " with " + defaultText(widestSpread.getSource(), "SIMULATOR") + " pricing.",
                     widestSpread,
                     getSpreadPips(widestSpread) >= 5 ? "warning" : "info",
                     now
@@ -101,7 +101,7 @@ public class NotificationService {
             notifications.add(buildMarketNotification(
                     "MARKET-LIQUIDITY-" + instrumentKey(deepestLiquidity),
                     deepestLiquidity.getCcyPair() + " carries the deepest displayed size",
-                    deepestLiquidity.getTenorLabel() + " liquidity shows " + formatQuantity(deepestLiquidity.getQty())
+                    deepestLiquidity.getTenor() + " liquidity shows " + formatQuantity(deepestLiquidity.getQty())
                             + " available at " + formatRate(deepestLiquidity.getBid()) + " / " + formatRate(deepestLiquidity.getAsk()) + ".",
                     deepestLiquidity,
                     "info",
@@ -157,7 +157,7 @@ public class NotificationService {
             String id,
             String title,
             String message,
-            FxPrice price,
+            FxPriceDTO price,
             String severity,
             LocalDateTime now
     ) {
@@ -169,13 +169,13 @@ public class NotificationService {
         notification.setMessage(message);
         notification.setSource("Market commentary");
         notification.setRelatedId(instrumentKey(price));
-        LocalDateTime eventTime = price.getUpdatedAt() != null ? price.getUpdatedAt() : now;
+        LocalDateTime eventTime = price.getUpdatedAt() != null ? price.getUpdatedAt().toLocalDateTime() : now;
         notification.setCreatedAt(eventTime);
         notification.setUnread(eventTime.isAfter(now.minusMinutes(30)));
         return notification;
     }
 
-    private Map<String, FxPrice> compressLatestPrices(List<FxPrice> prices) {
+    private Map<String, FxPriceDTO> compressLatestPrices(List<FxPriceDTO> prices) {
         return prices.stream().collect(Collectors.toMap(
                 this::instrumentKey,
                 price -> price,
@@ -184,27 +184,30 @@ public class NotificationService {
         ));
     }
 
-    private FxPrice pickDisplayPrice(FxPrice left, FxPrice right) {
-        Comparator<FxPrice> comparator = Comparator
-                .comparing(FxPrice::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(FxPrice::getQty, Comparator.reverseOrder());
+    private FxPriceDTO pickDisplayPrice(FxPriceDTO left, FxPriceDTO right) {
+        Comparator<FxPriceDTO> comparator = Comparator
+                .comparing(FxPriceDTO::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(FxPriceDTO::getQty, Comparator.reverseOrder());
         return comparator.compare(left, right) >= 0 ? left : right;
     }
 
-    private double getSpreadPips(FxPrice price) {
-        double multiplier = price.getBid() > 20 ? 100 : 10000;
-        return Math.abs(price.getAsk() - price.getBid()) * multiplier;
+    private double getSpreadPips(FxPriceDTO price) {
+        double bid = price.getBid().doubleValue();
+        double ask = price.getAsk().doubleValue();
+        double multiplier = bid > 20 ? 100 : 10000;
+        return Math.abs(ask - bid) * multiplier;
     }
 
-    private String formatSpread(FxPrice price) {
+    private String formatSpread(FxPriceDTO price) {
         return String.format(Locale.US, "%.1f pips", getSpreadPips(price));
     }
 
-    private String formatQuantity(double qty) {
-        return NumberFormat.getIntegerInstance(Locale.US).format(Math.round(qty));
+    private String formatQuantity(Number qty) {
+        return NumberFormat.getIntegerInstance(Locale.US).format(Math.round(qty.doubleValue()));
     }
 
-    private String formatRate(double value) {
+    private String formatRate(Number input) {
+        double value = input.doubleValue();
         return String.format(Locale.US, value > 20 ? "%.3f" : "%.5f", value);
     }
 
@@ -228,12 +231,11 @@ public class NotificationService {
         return "primary";
     }
 
-    private String instrumentKey(FxPrice price) {
-        return defaultText(price.getCcyPair(), "UNKNOWN") + "-" + defaultText(price.getTenorLabel(), "SP");
+    private String instrumentKey(FxPriceDTO price) {
+        return defaultText(price.getCcyPair(), "UNKNOWN") + "-" + defaultText(price.getTenor(), "SP");
     }
 
     private String defaultText(String value, String fallback) {
         return value == null || value.trim().isEmpty() ? fallback : value.trim();
     }
 }
-

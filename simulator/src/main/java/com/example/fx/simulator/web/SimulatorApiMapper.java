@@ -45,6 +45,12 @@ public class SimulatorApiMapper {
                 request.getTimeInForce(), request.getExpiresAt(), callbackUrl(request.getCallbackUrl()));
     }
 
+    public RestingOrderAmendment restingOrderAmendment(RestingOrderAmendRequest request) {
+        return new RestingOrderAmendment(
+                new RequestContext(request.getRequestId(), request.getChannel(), request.getSegment(), request.getCustomerId()),
+                request.getQuantity(), request.getLimitPrice(), request.getTimeInForce(), request.getExpiresAt());
+    }
+
     public com.example.fx.simulator.api.model.RestingOrder restingOrder(RestingOrder order, RequestContext context) {
         RestingOrderCommand command = order.command();
         PricingCommand pricing = command.pricing();
@@ -57,7 +63,7 @@ public class SimulatorApiMapper {
                 .limitPrice(command.limitPrice()).timeInForce(command.timeInForce()).expiresAt(command.expiresAt())
                 .status(order.status()).placedAt(order.placedAt())
                 .lastEvaluatedAt(order.lastEvaluatedAt()).lastEvaluatedPrice(order.lastEvaluatedPrice())
-                .closedAt(order.closedAt())
+                .closedAt(order.closedAt()).tradeId(order.trade() == null ? null : order.trade().tradeId())
                 .callbackUrl(command.callbackUrl().toString())
                 .callbackStatus(order.callbackStatus()).callbackAttempts(order.callbackAttempts());
     }

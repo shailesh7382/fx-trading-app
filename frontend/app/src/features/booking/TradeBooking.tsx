@@ -19,7 +19,7 @@ import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRou
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { fetchLookup } from '@/shared/api/client';
+import { extractApiMessage, fetchLookup } from '@/shared/api/client';
 import { fallbackCustomers, fallbackRelationshipManagers, fallbackSales } from '@/shared/demo/demoData';
 import { calculateSettlementDate, formatCurrency, formatDateTime, formatNotional, formatRate, getCurrencyCodes } from '@/shared/utils/formatters';
 import { useUser } from '@/features/auth/UserProvider';
@@ -75,9 +75,6 @@ interface BookingLaunchState {
 
 const productTypeOptions: Array<{ value: ProductType; label: string }> = [
   { value: 'SPOT_FWD', label: 'FX Spot/Fwd' },
-  { value: 'SWAP', label: 'FX Swap' },
-  { value: 'NDF', label: 'NDFs' },
-  { value: 'BULLION', label: 'Bullion' },
 ];
 const productTypeLabels: Record<string, string> = Object.fromEntries(
   productTypeOptions.map((option) => [option.value, option.label])
@@ -594,9 +591,9 @@ function TradeBooking() {
 
       setMessage('');
       setConfirmation(bookedTrade);
-    } catch {
+    } catch (bookingError) {
       setSeverity('error');
-      setMessage('Booking failed. Reprice the ticket and try again.');
+      setMessage(extractApiMessage(bookingError, 'Booking failed. Reprice the ticket and try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -622,6 +619,11 @@ function TradeBooking() {
         ['Tenor', confirmation.tenor],
         ['Quantity', formatNotional(confirmation.qty)],
         ['Rate', formatRate(confirmation.price)],
+        ['Cover price', formatRate(confirmation.coverPrice)],
+        ['Swap points', String(confirmation.swapPoints ?? 0)],
+        ['Quote ID', confirmation.quoteId],
+        ['Buy settlement', `${formatNotional(confirmation.buyQuantity || 0)} ${confirmation.buyCurrency || ''}`],
+        ['Sell settlement', `${formatNotional(confirmation.sellQuantity || 0)} ${confirmation.sellCurrency || ''}`],
         ['All-in notional', formatCurrency(Number(confirmation.qty || 0) * Number(confirmation.price || 0))],
         ['Trade date', confirmation.tradeDate],
         ['Settlement date', confirmation.settlementDate],

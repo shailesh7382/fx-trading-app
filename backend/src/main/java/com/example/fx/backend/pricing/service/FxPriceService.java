@@ -1,130 +1,86 @@
 package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.FxPriceDTO;
-import com.example.fx.backend.pricing.model.FxPrice;
-import com.example.fx.backend.pricing.model.MarketData;
-import com.example.fx.backend.pricing.model.Tenor;
-import com.example.fx.backend.pricing.repository.FxPriceRepository;
-import com.example.fx.backend.pricing.util.MarketDataConverter;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import com.example.fx.backend.simulator.SimulatorClientProperties;
+import com.example.fx.backend.simulator.SimulatorContractMapper;
+import com.example.fx.backend.simulator.SimulatorGateway;
+import com.example.fx.simulator.api.model.PriceQuote;
+import com.example.fx.simulator.api.model.TwoWayPriceQuote;
+import com.example.fx.simulator.api.model.TwoWayPriceRequest;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
 
 @Service
-public class FxPriceService implements MarketDataUpdateListener {
+public class FxPriceService {
+    private final SimulatorGateway simulator;
+    private final SimulatorClientProperties properties;
+    private final Clock clock;
+    private volatile List<FxPriceDTO> allPricesSnapshot = List.of();
+    private volatile Instant allPricesSnapshotAt = Instant.EPOCH;
 
-    @Autowired
-    private FxPriceRepository fxPriceRepository;
-
-    @Autowired
-    private LimitOrderService limitOrderService;
-
-    public FxPrice saveFxPrice(FxPrice fxPrice) {
-        return fxPriceRepository.save(fxPrice);
+    public FxPriceService(SimulatorGateway simulator, SimulatorClientProperties properties, Clock clock) {
+        this.simulator = simulator;
+        this.properties = properties;
+        this.clock = clock;
     }
 
-    @Override
-    @Transactional
-    public void onMarketDataUpdate(MarketData marketData) {
-        String ccyPair = marketData.getCcyPair();
-        Tenor tenor = Tenor.valueOf(marketData.getTenor());
-        fxPriceRepository.deleteByCcyPairAndTenor(ccyPair, tenor);
-        List<FxPrice> fxPrices = MarketDataConverter.convertToFxPrices(marketData);
-        for (FxPrice fxPrice : fxPrices) {
-            saveFxPrice(fxPrice);
+    public synchronized List<FxPriceDTO> getAllPrices() {
+        Instant now = clock.instant();
+        if (!allPricesSnapshot.isEmpty()
+                && Duration.between(allPricesSnapshotAt, now).compareTo(Duration.ofSeconds(1)) < 0) {
+            return allPricesSnapshot;
         }
-
-        limitOrderService.evaluateTriggeredOrders(ccyPair, tenor.getLabel(), fxPrices);
-    }
-
-    public List<FxPrice> getAllPrices() {
-        return fxPriceRepository.findAll();
+        allPricesSnapshot = getGridPrices("", "ALL", "pair", properties.instruments().size() * 6);
+        allPricesSnapshotAt = now;
+        return allPricesSnapshot;
     }
 
     public List<FxPriceDTO> getGridPrices(String search, String tenor, String sortBy, int limit) {
-        String normalizedSearch = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
-        String normalizedTenor = tenor == null || tenor.isBlank() ? "SP" : tenor.trim().toUpperCase(Locale.ROOT);
-        int safeLimit = Math.max(1, Math.min(limit, 12));
+        String query = search == null ? "" : search.trim().toUpperCase(Locale.ROOT);
+        List<String> tenors = "ALL".equalsIgnoreCase(tenor)
+                ? List.of("SP", "1W", "1M", "3M", "6M", "1Y")
+                : List.of(tenor == null || tenor.isBlank() ? "SP" : tenor);
+        int safeLimit = Math.max(1, Math.min(limit, properties.instruments().size() * 6));
 
-        Map<String, FxPrice> groupedPrices = getAllPrices().stream()
-                .filter(fxPrice -> normalizedSearch.isEmpty() || fxPrice.getCcyPair().toLowerCase(Locale.ROOT).contains(normalizedSearch))
-                .filter(fxPrice -> "ALL".equals(normalizedTenor) || fxPrice.getTenorLabel().equalsIgnoreCase(normalizedTenor))
-                .collect(Collectors.toMap(
-                        fxPrice -> fxPrice.getCcyPair() + "|" + fxPrice.getTenorLabel(),
-                        fxPrice -> fxPrice,
-                        this::pickDisplayPrice,
-                        LinkedHashMap::new
-                ));
-
-        return groupedPrices.values().stream()
-                .sorted(buildGridComparator(sortBy))
+        return properties.instruments().stream()
+                .map(String::toUpperCase)
+                .filter(pair -> query.isEmpty() || pair.contains(query))
+                .flatMap(pair -> tenors.stream().map(selectedTenor -> requestTwoWay(pair, selectedTenor)))
+                .sorted(comparator(sortBy))
                 .limit(safeLimit)
-                .map(FxPriceDTO::new)
-                .collect(Collectors.toList());
+                .toList();
     }
 
-    private FxPrice pickDisplayPrice(FxPrice left, FxPrice right) {
-        Comparator<FxPrice> comparator = Comparator
-                .comparing(FxPrice::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(FxPrice::getQty, Comparator.reverseOrder());
-
-        return comparator.compare(left, right) >= 0 ? left : right;
-    }
-
-    private Comparator<FxPrice> buildGridComparator(String sortBy) {
-        String normalizedSort = sortBy == null ? "pair" : sortBy.trim().toLowerCase(Locale.ROOT);
-
-        switch (normalizedSort) {
-            case "updated":
-                return Comparator.comparing(FxPrice::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(FxPrice::getCcyPair);
-            case "spread":
-                return Comparator.comparingDouble(this::getSpread)
-                        .thenComparing(FxPrice::getCcyPair);
-            default:
-                return Comparator.comparing(FxPrice::getCcyPair)
-                        .thenComparingInt(fxPrice -> getTenorOrder(fxPrice.getTenorLabel()));
+    private FxPriceDTO requestTwoWay(String currencyPair, String tenor) {
+        TwoWayPriceRequest request = new TwoWayPriceRequest()
+                .requestId(UUID.randomUUID().toString())
+                .channel(properties.channel())
+                .segment(properties.segment())
+                .customerId(properties.customerId())
+                .currencyPair(currencyPair)
+                .quantity(properties.defaultQuantity())
+                .quantityCurrency(currencyPair.substring(0, 3))
+                .tenor(SimulatorContractMapper.toContractTenor(tenor))
+                .quoteType("TWO_WAY");
+        PriceQuote quote = simulator.requestPrice(request);
+        if (!(quote instanceof TwoWayPriceQuote twoWay)) {
+            throw new IllegalStateException("Simulator returned a non-two-way quote for a two-way request.");
         }
+        return new FxPriceDTO(twoWay);
     }
 
-    private double getSpread(FxPrice fxPrice) {
-        return Math.abs(fxPrice.getAsk() - fxPrice.getBid());
+    private Comparator<FxPriceDTO> comparator(String sortBy) {
+        return switch (sortBy == null ? "pair" : sortBy.trim().toLowerCase(Locale.ROOT)) {
+            case "updated" -> Comparator.comparing(FxPriceDTO::getQuotedAt).reversed();
+            case "spread" -> Comparator.comparing(price -> price.getAsk().subtract(price.getBid()));
+            default -> Comparator.comparing(FxPriceDTO::getCcyPair)
+                    .thenComparingInt(price -> SimulatorContractMapper.tenorOrder(price.getTenor()));
+        };
     }
-
-    private int getTenorOrder(String tenor) {
-        switch (tenor) {
-            case "SP":
-                return 0;
-            case "1W":
-                return 1;
-            case "1M":
-                return 2;
-            case "6M":
-                return 3;
-            case "1Y":
-                return 4;
-            case "3M":
-                return 5;
-            default:
-                return Integer.MAX_VALUE;
-        }
-    }
-
-    public FxPrice updatePrice(FxPrice fxPrice) {
-        FxPrice savedPrice = fxPriceRepository.save(fxPrice);
-        limitOrderService.evaluateTriggeredOrders(
-                savedPrice.getCcyPair(),
-                savedPrice.getTenorLabel(),
-                fxPriceRepository.findByCcyPairAndTenor(savedPrice.getCcyPair(), savedPrice.getTenor())
-        );
-        return savedPrice;
-    }
-
 }

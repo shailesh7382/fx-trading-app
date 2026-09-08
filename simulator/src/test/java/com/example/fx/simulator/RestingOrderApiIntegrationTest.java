@@ -153,7 +153,7 @@ class RestingOrderApiIntegrationTest {
     }
 
     @Test
-    void triggersThroughTheMarketAndClosesWithoutExposingTheFill() throws Exception {
+    void triggersThroughTheMarketAndExposesTheBookedTradeForReconciliation() throws Exception {
         JsonNode placed = placeWorking("BUY", "99.00000");
         monitor.evaluateWorkingOrders();
 
@@ -163,10 +163,36 @@ class RestingOrderApiIntegrationTest {
         assertThat(triggered.path("callbackStatus").asText()).isEqualTo("PENDING");
         assertThat(triggered.path("closedAt").asText()).isNotBlank();
         assertThat(triggered.path("lastEvaluatedPrice").decimalValue()).isLessThan(new BigDecimal("99.00000"));
-        // A triggered order still describes the order, never the fill it produced.
-        for (String execution : new String[]{"tradeId", "executedPrice", "clientPrice", "coverPrice"}) {
+        assertThat(triggered.path("tradeId").asText()).isNotBlank();
+        // Price and settlement detail stays on the trade and callback event.
+        for (String execution : new String[]{"executedPrice", "clientPrice", "coverPrice"}) {
             assertThat(triggered.has(execution)).as(execution).isFalse();
         }
+    }
+
+    @Test
+    void amendsWorkingOrderAtomicallyAndPreservesImmutableTerms() throws Exception {
+        JsonNode placed = placeWorking("BUY", "1.05000");
+        String path = "/api/v1/resting-orders/" + placed.path("orderId").asText();
+        ObjectNode amendment = mapper.createObjectNode().put("requestId", "amend-request")
+                .put("channel", "WEB").put("segment", "C").put("customerId", "0000123456")
+                .put("quantity", 2000000).put("limitPrice", new BigDecimal("1.04000"))
+                .put("timeInForce", "GOOD_TILL_TIME")
+                .put("expiresAt", OffsetDateTime.now(ZoneOffset.UTC).plusHours(1).toString());
+
+        JsonNode amended = checked(put(path).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(amendment)), 200);
+        assertThat(amended.path("requestId").asText()).isEqualTo("amend-request");
+        assertThat(amended.path("originalRequestId")).isEqualTo(placed.path("originalRequestId"));
+        assertThat(amended.path("orderId")).isEqualTo(placed.path("orderId"));
+        assertThat(amended.path("currencyPair")).isEqualTo(placed.path("currencyPair"));
+        assertThat(amended.path("quantity").decimalValue()).isEqualByComparingTo("2000000");
+        assertThat(amended.path("limitPrice").decimalValue()).isEqualByComparingTo("1.04000");
+        assertThat(amended.path("lastEvaluatedAt").isMissingNode()).isTrue();
+
+        checked(identified(delete(path), "cancel-amended", "0000123456"), 200);
+        checked(put(path).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(amendment.put("requestId", "too-late"))), 409);
     }
 
     @Test

@@ -16,7 +16,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { useLocation } from 'react-router-dom';
 import { useUser } from '@/features/auth/UserProvider';
 import { downloadCsv } from '@/shared/utils/csv';
-import { formatCurrency, formatDateTime, formatNotional } from '@/shared/utils/formatters';
+import { formatCurrency, formatDateTime, formatNotional, formatRate } from '@/shared/utils/formatters';
 
 const productTypeLabels: Record<string, string> = {
   SPOT_FWD: 'FX Spot/Fwd',
@@ -149,7 +149,7 @@ function TradeBlotter() {
                   <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
                     {trade.id === bookedTradeId ? <Chip label="Just booked" color="success" size="small" /> : null}
                     <Chip label={trade.status} color="success" size="small" />
-                    <Chip label={trade.bookingMode === 'live' ? 'Live capture' : 'Local fallback'} color={trade.bookingMode === 'live' ? 'primary' : 'warning'} size="small" />
+                    <Chip label="Simulator" color="primary" size="small" />
                     <Chip label={trade.executionType === 'LIMIT' ? 'Limit executed' : 'Market ticket'} size="small" variant="outlined" />
                     <Chip label={productTypeLabels[trade.productType || ''] || trade.productType || 'FX Spot/Fwd'} size="small" variant="outlined" />
                   </Stack>
@@ -176,6 +176,20 @@ function TradeBlotter() {
                   <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Price</Typography>
                     <Typography>{trade.price}</Typography>
+                  </Stack>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                    <Typography color="text.secondary">Cover / swap</Typography>
+                    <Typography>{formatRate(trade.coverPrice)} / {trade.swapPoints ?? 0}</Typography>
+                  </Stack>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 2 }}>
+                    <Typography color="text.secondary">Settlement</Typography>
+                    <Typography sx={{ textAlign: 'right' }}>
+                      Buy {formatNotional(trade.buyQuantity || 0)} {trade.buyCurrency} · Sell {formatNotional(trade.sellQuantity || 0)} {trade.sellCurrency}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 2 }}>
+                    <Typography color="text.secondary">Quote ID</Typography>
+                    <Typography sx={{ fontFamily: 'monospace', textAlign: 'right' }}>{trade.quoteId || '—'}</Typography>
                   </Stack>
                   <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Notional</Typography>

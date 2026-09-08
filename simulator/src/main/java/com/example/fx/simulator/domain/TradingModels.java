@@ -119,6 +119,28 @@ public final class TradingModels {
         }
     }
 
+    /** Complete replacement of the mutable terms on a working order. */
+    public record RestingOrderAmendment(RequestContext context, BigDecimal quantity, BigDecimal limitPrice,
+                                        TimeInForce timeInForce, OffsetDateTime expiresAt) {
+        public RestingOrderAmendment {
+            Objects.requireNonNull(context);
+            if (quantity == null || quantity.signum() <= 0
+                    || quantity.compareTo(new BigDecimal("1000000000000")) > 0) {
+                throw SimulatorApiException.invalidRestingOrder(
+                        "quantity must be positive and at most 1000000000000.");
+            }
+            if (limitPrice == null || limitPrice.signum() <= 0) {
+                throw SimulatorApiException.invalidRestingOrder("limitPrice must be positive.");
+            }
+            if (timeInForce == TimeInForce.GOOD_TILL_TIME && expiresAt == null) {
+                throw SimulatorApiException.invalidRestingOrder("GOOD_TILL_TIME requires expiresAt.");
+            }
+            if (timeInForce == TimeInForce.GOOD_TILL_CANCELLED && expiresAt != null) {
+                throw SimulatorApiException.invalidRestingOrder("GOOD_TILL_CANCELLED must not carry expiresAt.");
+            }
+        }
+    }
+
     public record RestingOrder(RestingOrderCommand command, RestingOrderStatus status,
                                OffsetDateTime placedAt, OffsetDateTime lastEvaluatedAt, BigDecimal lastEvaluatedPrice,
                                OffsetDateTime closedAt, Trade trade,
@@ -152,6 +174,11 @@ public final class TradingModels {
         public RestingOrder withCallback(CallbackStatus next, int attempts) {
             return new RestingOrder(command, status, placedAt, lastEvaluatedAt, lastEvaluatedPrice,
                     closedAt, trade, next, attempts);
+        }
+
+        public RestingOrder amended(RestingOrderCommand amendedCommand) {
+            return new RestingOrder(amendedCommand, RestingOrderStatus.WORKING, placedAt,
+                    null, null, null, null, CallbackStatus.NOT_REQUIRED, 0);
         }
     }
 

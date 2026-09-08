@@ -259,6 +259,9 @@ function LimitOrders() {
                     >
                       {order.id}
                     </Typography>
+                    <Typography color="text.secondary" variant="caption" sx={{ display: 'block' }}>
+                      {order.callbackStatus || 'NOT_REQUIRED'} · {order.callbackAttempts || 0} callback attempts
+                    </Typography>
                   </Box>
                   <Box sx={{ display: { xs: 'block', md: 'none' } }}>
                     <StatusChip status={order.status} />
@@ -305,6 +308,16 @@ function LimitOrders() {
                 {order.executedAt ? (
                   <Typography color="text.secondary" variant="caption">
                     Executed {formatDateTime(order.executedAt)}
+                  </Typography>
+                ) : null}
+                {order.lastEvaluatedAt ? (
+                  <Typography color="text.secondary" variant="caption" sx={{ display: 'block' }}>
+                    Last checked {formatDateTime(order.lastEvaluatedAt)} @ {formatRate(order.lastEvaluatedPrice || 0)}
+                  </Typography>
+                ) : null}
+                {order.simulatorTradeId ? (
+                  <Typography color="text.secondary" variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
+                    Trade {order.simulatorTradeId}
                   </Typography>
                 ) : null}
               </OrderCell>

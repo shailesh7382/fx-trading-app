@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Entity
 public class Trade {
@@ -12,12 +13,30 @@ public class Trade {
     @Id
     private String id;
 
+    private String quoteId;
+    private String requestId;
+    private String originalRequestId;
+    private String responseId;
+    private OffsetDateTime responseAt;
+    private String channel;
+    private String segment;
+    private String customerId;
+
     private String ccyPair;
     private String tenor;
     private double qty;
     private String direction;
     private String dealtCurrency;
+    private String quantityCurrency;
     private double price;
+    private Double coverPrice;
+    private Double swapPoints;
+    private String buyCurrency;
+    private Double buyQuantity;
+    private String sellCurrency;
+    private Double sellQuantity;
+    private LocalDate spotDate;
+    private LocalDate valueDate;
     private String customer;
     private String rm;
     private String sales;
@@ -37,6 +56,11 @@ public class Trade {
     @Column(length = 1024)
     private String productDetails;
 
+    private String marketSource;
+
+    @jakarta.persistence.Transient
+    private String idempotencyKey;
+
     private LocalDateTime bookedAt;
 
     public String getId() {
@@ -46,6 +70,23 @@ public class Trade {
     public void setId(String id) {
         this.id = id;
     }
+
+    public String getQuoteId() { return quoteId; }
+    public void setQuoteId(String quoteId) { this.quoteId = quoteId; }
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
+    public String getOriginalRequestId() { return originalRequestId; }
+    public void setOriginalRequestId(String originalRequestId) { this.originalRequestId = originalRequestId; }
+    public String getResponseId() { return responseId; }
+    public void setResponseId(String responseId) { this.responseId = responseId; }
+    public OffsetDateTime getResponseAt() { return responseAt; }
+    public void setResponseAt(OffsetDateTime responseAt) { this.responseAt = responseAt; }
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
+    public String getSegment() { return segment; }
+    public void setSegment(String segment) { this.segment = segment; }
+    public String getCustomerId() { return customerId; }
+    public void setCustomerId(String customerId) { this.customerId = customerId; }
 
     public String getCcyPair() {
         return ccyPair;
@@ -87,6 +128,9 @@ public class Trade {
         this.dealtCurrency = dealtCurrency;
     }
 
+    public String getQuantityCurrency() { return quantityCurrency; }
+    public void setQuantityCurrency(String quantityCurrency) { this.quantityCurrency = quantityCurrency; }
+
     public double getPrice() {
         return price;
     }
@@ -94,6 +138,23 @@ public class Trade {
     public void setPrice(double price) {
         this.price = price;
     }
+
+    public Double getCoverPrice() { return coverPrice; }
+    public void setCoverPrice(Double coverPrice) { this.coverPrice = coverPrice; }
+    public Double getSwapPoints() { return swapPoints; }
+    public void setSwapPoints(Double swapPoints) { this.swapPoints = swapPoints; }
+    public String getBuyCurrency() { return buyCurrency; }
+    public void setBuyCurrency(String buyCurrency) { this.buyCurrency = buyCurrency; }
+    public Double getBuyQuantity() { return buyQuantity; }
+    public void setBuyQuantity(Double buyQuantity) { this.buyQuantity = buyQuantity; }
+    public String getSellCurrency() { return sellCurrency; }
+    public void setSellCurrency(String sellCurrency) { this.sellCurrency = sellCurrency; }
+    public Double getSellQuantity() { return sellQuantity; }
+    public void setSellQuantity(Double sellQuantity) { this.sellQuantity = sellQuantity; }
+    public LocalDate getSpotDate() { return spotDate; }
+    public void setSpotDate(LocalDate spotDate) { this.spotDate = spotDate; }
+    public LocalDate getValueDate() { return valueDate; }
+    public void setValueDate(LocalDate valueDate) { this.valueDate = valueDate; }
 
     public String getCustomer() {
         return customer;
@@ -199,6 +260,11 @@ public class Trade {
         this.productDetails = productDetails;
     }
 
+    public String getMarketSource() { return marketSource; }
+    public void setMarketSource(String marketSource) { this.marketSource = marketSource; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+
     public LocalDateTime getBookedAt() {
         return bookedAt;
     }
@@ -207,4 +273,3 @@ public class Trade {
         this.bookedAt = bookedAt;
     }
 }
-

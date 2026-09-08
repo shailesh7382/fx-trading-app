@@ -2,312 +2,333 @@ package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.LimitOrderAmendRequest;
 import com.example.fx.backend.pricing.dto.LimitOrderRequest;
-import com.example.fx.backend.pricing.model.FxPrice;
 import com.example.fx.backend.pricing.model.LimitOrder;
 import com.example.fx.backend.pricing.model.LimitOrderStatus;
-import com.example.fx.backend.pricing.model.Tenor;
 import com.example.fx.backend.pricing.model.TimeInForce;
-import com.example.fx.backend.pricing.repository.FxPriceRepository;
+import com.example.fx.backend.pricing.model.Trade;
 import com.example.fx.backend.pricing.repository.LimitOrderRepository;
+import com.example.fx.backend.simulator.SimulatorClientProperties;
+import com.example.fx.backend.simulator.SimulatorContractMapper;
+import com.example.fx.backend.simulator.SimulatorGateway;
+import com.example.fx.simulator.api.model.CallbackStatus;
+import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
+import com.example.fx.simulator.api.model.RestingOrderEvent;
+import com.example.fx.simulator.api.model.RestingOrderExpiredEvent;
+import com.example.fx.simulator.api.model.RestingOrderRequest;
+import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Clock;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
-import java.util.OptionalDouble;
-
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
-
 @Service
 public class LimitOrderService {
+    private static final Logger LOG = LoggerFactory.getLogger(LimitOrderService.class);
+    private static final DateTimeFormatter ORDER_DATE = DateTimeFormatter.ofPattern("yyMMdd");
 
-    private static final DateTimeFormatter ORDER_ID_DATE = DateTimeFormatter.ofPattern("yyMMdd");
-
-    private final LimitOrderRepository limitOrderRepository;
-    private final FxPriceRepository fxPriceRepository;
+    private final LimitOrderRepository repository;
+    private final SimulatorGateway simulator;
+    private final SimulatorClientProperties properties;
     private final TradeService tradeService;
     private final Clock clock;
 
-    public LimitOrderService(LimitOrderRepository limitOrderRepository, FxPriceRepository fxPriceRepository, TradeService tradeService, Clock clock) {
-        this.limitOrderRepository = limitOrderRepository;
-        this.fxPriceRepository = fxPriceRepository;
+    public LimitOrderService(LimitOrderRepository repository, SimulatorGateway simulator,
+                             SimulatorClientProperties properties, TradeService tradeService, Clock clock) {
+        this.repository = repository;
+        this.simulator = simulator;
+        this.properties = properties;
         this.tradeService = tradeService;
         this.clock = clock;
     }
 
     @Transactional
     public LimitOrder submitLimitOrder(LimitOrderRequest request) {
-        expireStaleOrders();
-
-        String tenor = validateSpotTenor(request.getTenor());
-        validateRequiredSpotFields(request.getCcyPair(), request.getDealtCurrency());
-        validateOrderNumbers(request.getQty(), request.getLimitPrice());
-        String direction = normalizeDirection(request.getDirection());
-        LocalDate today = LocalDate.now(clock);
+        validate(request.getCcyPair(), request.getDealtCurrency(), request.getQty(), request.getLimitPrice());
+        String requestId = textOr(request.getRequestId(), UUID.randomUUID().toString());
+        String channel = textOr(request.getChannel(), properties.channel());
+        String segment = textOr(request.getSegment(), properties.segment());
+        String customerId = textOr(request.getCustomerId(), properties.customerId());
+        String pair = request.getCcyPair().trim().toUpperCase(Locale.ROOT);
         TimeInForce timeInForce = parseTimeInForce(request.getTimeInForce());
-        LocalDate goodTillDate = validateGoodTillDate(timeInForce, request.getGoodTillDate(), today);
+        OffsetDateTime expiresAt = expiry(timeInForce, request.getGoodTillDate());
+        String orderId = nextOrderId();
 
-        LimitOrder order = new LimitOrder();
-        order.setId(nextOrderId());
-        order.setCcyPair(normalizeText(request.getCcyPair()));
-        order.setTenor(tenor);
-        order.setQty(request.getQty());
-        order.setDirection(direction);
-        order.setDealtCurrency(normalizeText(request.getDealtCurrency()));
-        order.setLimitPrice(request.getLimitPrice());
-        order.setTimeInForce(timeInForce);
-        order.setGoodTillDate(goodTillDate);
-        order.setTradeDate(request.getTradeDate() != null ? request.getTradeDate() : today);
-        order.setSettlementDate(request.getSettlementDate() != null ? request.getSettlementDate() : today);
-        order.setCustomer(defaultText(request.getCustomer(), "System limit order"));
-        order.setRm(defaultText(request.getRm(), "N/A"));
-        order.setSales(defaultText(request.getSales(), "N/A"));
-        order.setComments(defaultText(request.getComments(), "Submitted from the spot rate grid."));
-        order.setTrader(defaultText(request.getTrader(), "system"));
-        order.setStatus(LimitOrderStatus.ACTIVE);
-        order.setSubmittedAt(LocalDateTime.now(clock));
+        RestingOrderRequest simulatorRequest = new RestingOrderRequest()
+                .requestId(requestId).orderId(orderId)
+                .channel(channel).segment(segment).customerId(customerId)
+                .currencyPair(pair).quantity(BigDecimal.valueOf(request.getQty()))
+                .quantityCurrency(request.getDealtCurrency().trim().toUpperCase(Locale.ROOT))
+                .tenor(SimulatorContractMapper.toContractTenor(request.getTenor()))
+                .side(SimulatorContractMapper.toSide(request.getDirection()))
+                .limitPrice(BigDecimal.valueOf(request.getLimitPrice()))
+                .timeInForce(toContractTimeInForce(timeInForce))
+                .expiresAt(expiresAt)
+                .callbackUrl(properties.callbackUrl().toString());
 
-        LimitOrder savedOrder = limitOrderRepository.save(order);
-        evaluateTriggeredOrders(
-                savedOrder.getCcyPair(),
-                savedOrder.getTenor(),
-                fxPriceRepository.findByCcyPairAndTenor(savedOrder.getCcyPair(), Tenor.SP)
-        );
-        return limitOrderRepository.findById(savedOrder.getId()).orElse(savedOrder);
-    }
-
-    @Transactional
-    public List<LimitOrder> getCurrentOrders() {
-        expireStaleOrders();
-        return limitOrderRepository.findByStatusOrderBySubmittedAtDesc(LimitOrderStatus.ACTIVE);
-    }
-
-    @Transactional
-    public List<LimitOrder> getAllOrders() {
-        expireStaleOrders();
-        return limitOrderRepository.findAllByOrderBySubmittedAtDesc();
+        LimitOrder order = apply(simulator.placeRestingOrder(simulatorRequest), new LimitOrder());
+        copyDeskMetadata(request, order);
+        return repository.save(order);
     }
 
     @Transactional
     public List<LimitOrder> getOrders(String view, String status) {
-        expireStaleOrders();
-
-        if (hasText(status) && !"ALL".equalsIgnoreCase(status)) {
-            return limitOrderRepository.findByStatusOrderBySubmittedAtDesc(parseStatus(status));
+        reconcileRemoteOrders();
+        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
+            return repository.findByStatusOrderBySubmittedAtDesc(parseStatus(status));
         }
-
-        if ("ALL".equalsIgnoreCase(defaultText(view, "ACTIVE"))) {
-            return limitOrderRepository.findAllByOrderBySubmittedAtDesc();
+        if ("ALL".equalsIgnoreCase(textOr(view, "ACTIVE"))) {
+            return repository.findAllByOrderBySubmittedAtDesc();
         }
-
-        return limitOrderRepository.findByStatusOrderBySubmittedAtDesc(LimitOrderStatus.ACTIVE);
+        return repository.findByStatusOrderBySubmittedAtDesc(LimitOrderStatus.ACTIVE);
     }
 
     @Transactional
     public LimitOrder amendLimitOrder(String orderId, LimitOrderAmendRequest request) {
-        expireStaleOrders();
-
-        LimitOrder activeOrder = getActiveOrder(orderId);
-        validateOrderNumbers(request.getQty(), request.getLimitPrice());
-
+        LimitOrder order = active(orderId);
+        validate(order.getCcyPair(), order.getDealtCurrency(), request.getQty(), request.getLimitPrice());
         TimeInForce timeInForce = parseTimeInForce(request.getTimeInForce());
-        LocalDate goodTillDate = validateGoodTillDate(timeInForce, request.getGoodTillDate(), LocalDate.now(clock));
-
-        activeOrder.setQty(request.getQty());
-        activeOrder.setLimitPrice(request.getLimitPrice());
-        activeOrder.setTimeInForce(timeInForce);
-        activeOrder.setGoodTillDate(goodTillDate);
-
+        RestingOrderAmendRequest amendment = new RestingOrderAmendRequest()
+                .requestId(UUID.randomUUID().toString())
+                .channel(order.getChannel()).segment(order.getSegment()).customerId(order.getCustomerId())
+                .quantity(BigDecimal.valueOf(request.getQty()))
+                .limitPrice(BigDecimal.valueOf(request.getLimitPrice()))
+                .timeInForce(toContractTimeInForce(timeInForce))
+                .expiresAt(expiry(timeInForce, request.getGoodTillDate()));
+        apply(simulator.amendRestingOrder(orderId, amendment), order);
         if (request.getComments() != null) {
-            activeOrder.setComments(request.getComments().trim());
+            order.setComments(request.getComments().trim());
         }
-
-        LimitOrder savedOrder = limitOrderRepository.save(activeOrder);
-        evaluateTriggeredOrders(
-                savedOrder.getCcyPair(),
-                savedOrder.getTenor(),
-                fxPriceRepository.findByCcyPairAndTenor(savedOrder.getCcyPair(), Tenor.SP)
-        );
-        return limitOrderRepository.findById(savedOrder.getId()).orElse(savedOrder);
+        return repository.save(order);
     }
 
     @Transactional
     public LimitOrder cancelLimitOrder(String orderId) {
-        expireStaleOrders();
-
-        LimitOrder activeOrder = getActiveOrder(orderId);
-        activeOrder.setStatus(LimitOrderStatus.CANCELLED);
-        return limitOrderRepository.save(activeOrder);
+        LimitOrder order = active(orderId);
+        com.example.fx.simulator.api.model.RestingOrder cancelled = simulator.cancelRestingOrder(
+                orderId, UUID.randomUUID().toString(), order.getChannel(), order.getSegment(), order.getCustomerId());
+        return repository.save(apply(cancelled, order));
     }
 
     @Transactional
-    public void evaluateTriggeredOrders(String ccyPair, String tenor, List<FxPrice> prices) {
-        expireStaleOrders();
+    public void receiveEvent(RestingOrderEvent event) {
+        UUID eventId;
+        String orderId;
+        if (event instanceof RestingOrderTriggeredEvent triggered) {
+            eventId = triggered.getEventId();
+            orderId = triggered.getOrderId();
+        } else if (event instanceof RestingOrderExpiredEvent expired) {
+            eventId = expired.getEventId();
+            orderId = expired.getOrderId();
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported resting-order event.");
+        }
 
-        if (!"SP".equalsIgnoreCase(tenor) || prices == null || prices.isEmpty()) {
+        LimitOrder order = repository.findById(orderId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Resting order " + orderId + " is not known by the backend."));
+        if (eventId.toString().equals(order.getLastEventId())) {
             return;
         }
 
-        List<LimitOrder> activeOrders = limitOrderRepository.findByStatusAndCcyPairAndTenorOrderBySubmittedAtAsc(
-                LimitOrderStatus.ACTIVE,
-                ccyPair,
-                "SP"
-        );
-
-        for (LimitOrder order : activeOrders) {
-            OptionalDouble executablePrice = findExecutablePrice(prices, order);
-            if (!executablePrice.isPresent()) {
-                continue;
-            }
-
+        if (event instanceof RestingOrderTriggeredEvent triggered) {
+            requireMatchingContext(order, triggered.getChannel(), triggered.getSegment(), triggered.getCustomerId());
             order.setStatus(LimitOrderStatus.EXECUTED);
-            order.setExecutedPrice(executablePrice.getAsDouble());
-            order.setExecutedAt(LocalDateTime.now(clock));
-            limitOrderRepository.save(order);
-            tradeService.bookExecutedLimitOrder(order, executablePrice.getAsDouble());
+            order.setExecutedAt(triggered.getOccurredAt().toLocalDateTime());
+            order.setExecutedPrice(triggered.getClientPrice().doubleValue());
+            order.setLastEvaluatedAt(triggered.getOccurredAt());
+            order.setLastEvaluatedPrice(triggered.getClientPrice().doubleValue());
+            order.setClosedAt(triggered.getOccurredAt());
+            order.setSimulatorTradeId(triggered.getTradeId().toString());
+            tradeService.reconcileBooking(triggered.getTradeId(), UUID.randomUUID().toString(),
+                    triggered.getChannel(), triggered.getSegment(), triggered.getCustomerId(),
+                    metadataFor(order), "LIMIT", order.getId());
+        } else {
+            RestingOrderExpiredEvent expired = (RestingOrderExpiredEvent) event;
+            requireMatchingContext(order, expired.getChannel(), expired.getSegment(), expired.getCustomerId());
+            order.setStatus(LimitOrderStatus.EXPIRED);
+            order.setExecutedAt(null);
+            order.setExecutedPrice(null);
+            order.setLastEvaluatedAt(expired.getOccurredAt());
+            order.setLastEvaluatedPrice(expired.getLastEvaluatedPrice() == null
+                    ? null : expired.getLastEvaluatedPrice().doubleValue());
+            order.setClosedAt(expired.getOccurredAt());
+        }
+        order.setLastEventId(eventId.toString());
+        order.setEventReceivedAt(OffsetDateTime.now(clock));
+        order.setCallbackStatus(CallbackStatus.PENDING.getValue());
+        repository.save(order);
+    }
+
+    private void reconcileRemoteOrders() {
+        LinkedHashMap<String, LimitOrder> candidates = new LinkedHashMap<>();
+        repository.findByStatusOrderBySubmittedAtDesc(LimitOrderStatus.ACTIVE)
+                .forEach(order -> candidates.put(order.getId(), order));
+        repository.findByCallbackStatusOrderBySubmittedAtDesc(CallbackStatus.PENDING.getValue())
+                .forEach(order -> candidates.put(order.getId(), order));
+
+        for (LimitOrder order : candidates.values()) {
+            try {
+                com.example.fx.simulator.api.model.RestingOrder remote = simulator.getRestingOrder(
+                        order.getId(), UUID.randomUUID().toString(), order.getChannel(), order.getSegment(), order.getCustomerId());
+                apply(remote, order);
+                repository.save(order);
+                if (remote.getTradeId() != null) {
+                    tradeService.reconcileBooking(remote.getTradeId(), UUID.randomUUID().toString(),
+                            order.getChannel(), order.getSegment(), order.getCustomerId(),
+                            metadataFor(order), "LIMIT", order.getId());
+                }
+            } catch (ResponseStatusException exception) {
+                LOG.warn("Could not reconcile resting order {}: {}", order.getId(), exception.getReason());
+            }
         }
     }
 
-    @Transactional
-    public int expireStaleOrders() {
-        LocalDate today = LocalDate.now(clock);
-        List<LimitOrder> staleOrders = limitOrderRepository.findByStatusAndTimeInForceAndGoodTillDateBefore(
-                LimitOrderStatus.ACTIVE,
-                TimeInForce.GTD,
-                today
-        );
-
-        if (staleOrders.isEmpty()) {
-            return 0;
-        }
-
-        staleOrders.forEach(order -> order.setStatus(LimitOrderStatus.EXPIRED));
-        limitOrderRepository.saveAll(staleOrders);
-        return staleOrders.size();
-    }
-
-    private LimitOrder getActiveOrder(String orderId) {
-        LimitOrder order = limitOrderRepository.findById(orderId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Limit order " + orderId + " was not found."));
-
-        if (order.getStatus() != LimitOrderStatus.ACTIVE) {
-            throw new ResponseStatusException(BAD_REQUEST, "Only active limit orders can be amended or cancelled.");
-        }
-
+    private LimitOrder apply(com.example.fx.simulator.api.model.RestingOrder remote, LimitOrder order) {
+        order.setId(remote.getOrderId());
+        order.setRequestId(remote.getRequestId());
+        order.setOriginalRequestId(remote.getOriginalRequestId());
+        order.setResponseId(remote.getResponseId().toString());
+        order.setResponseAt(remote.getResponseAt());
+        order.setChannel(remote.getChannel());
+        order.setSegment(remote.getSegment());
+        order.setCustomerId(remote.getCustomerId());
+        order.setCcyPair(remote.getCurrencyPair());
+        order.setTenor(SimulatorContractMapper.toUiTenor(remote.getTenor()));
+        order.setContractTenor(remote.getTenor().getValue());
+        order.setQty(remote.getQuantity().doubleValue());
+        order.setDirection(SimulatorContractMapper.toDirection(remote.getSide()));
+        order.setDealtCurrency(remote.getQuantityCurrency());
+        order.setQuantityCurrency(remote.getQuantityCurrency());
+        order.setLimitPrice(remote.getLimitPrice().doubleValue());
+        order.setTimeInForce(remote.getTimeInForce() == com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_TIME
+                ? TimeInForce.GTD : TimeInForce.GTC);
+        order.setGoodTillDate(remote.getExpiresAt() == null ? null : remote.getExpiresAt().toLocalDate());
+        order.setExpiresAt(remote.getExpiresAt());
+        order.setStatus(switch (remote.getStatus()) {
+            case WORKING -> LimitOrderStatus.ACTIVE;
+            case TRIGGERED -> LimitOrderStatus.EXECUTED;
+            case EXPIRED -> LimitOrderStatus.EXPIRED;
+            case CANCELLED -> LimitOrderStatus.CANCELLED;
+        });
+        order.setSubmittedAt(remote.getPlacedAt().toLocalDateTime());
+        order.setLastEvaluatedAt(remote.getLastEvaluatedAt());
+        order.setLastEvaluatedPrice(remote.getLastEvaluatedPrice() == null
+                ? null : remote.getLastEvaluatedPrice().doubleValue());
+        order.setClosedAt(remote.getClosedAt());
+        order.setExecutedAt(remote.getStatus() == com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED
+                && remote.getClosedAt() != null ? remote.getClosedAt().toLocalDateTime() : order.getExecutedAt());
+        order.setExecutedPrice(remote.getStatus() == com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED
+                ? order.getLastEvaluatedPrice() : order.getExecutedPrice());
+        order.setSimulatorTradeId(remote.getTradeId() == null ? null : remote.getTradeId().toString());
+        order.setCallbackUrl(remote.getCallbackUrl());
+        order.setCallbackStatus(remote.getCallbackStatus().getValue());
+        order.setCallbackAttempts(remote.getCallbackAttempts());
         return order;
     }
 
-    private OptionalDouble findExecutablePrice(List<FxPrice> prices, LimitOrder order) {
-        return prices.stream()
-                .filter(price -> price.getQty() >= order.getQty())
-                .mapToDouble(price -> "Buy".equalsIgnoreCase(order.getDirection()) ? price.getAsk() : price.getBid())
-                .filter(candidatePrice -> "Buy".equalsIgnoreCase(order.getDirection())
-                        ? candidatePrice <= order.getLimitPrice()
-                        : candidatePrice >= order.getLimitPrice())
-                .boxed()
-                .min(buildExecutionComparator(order))
-                .stream()
-                .mapToDouble(Double::doubleValue)
-                .findFirst();
-    }
-
-    private Comparator<Double> buildExecutionComparator(LimitOrder order) {
-        if ("Buy".equalsIgnoreCase(order.getDirection())) {
-            return Comparator.naturalOrder();
+    private LimitOrder active(String orderId) {
+        LimitOrder order = repository.findById(orderId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Resting order " + orderId + " was not found."));
+        if (order.getStatus() != LimitOrderStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only working orders can be changed.");
         }
-        return Comparator.reverseOrder();
+        return order;
     }
 
-    private TimeInForce parseTimeInForce(String rawTimeInForce) {
+    private void copyDeskMetadata(LimitOrderRequest request, LimitOrder order) {
+        LocalDate today = LocalDate.now(clock);
+        order.setTradeDate(request.getTradeDate() == null ? today : request.getTradeDate());
+        order.setSettlementDate(request.getSettlementDate());
+        order.setCustomer(textOr(request.getCustomer(), "Simulator customer " + order.getCustomerId()));
+        order.setRm(textOr(request.getRm(), "N/A"));
+        order.setSales(textOr(request.getSales(), "N/A"));
+        order.setComments(textOr(request.getComments(), "Submitted from the rate grid."));
+        order.setTrader(textOr(request.getTrader(), "system"));
+    }
+
+    private Trade metadataFor(LimitOrder order) {
+        Trade metadata = new Trade();
+        metadata.setCustomer(order.getCustomer());
+        metadata.setRm(order.getRm());
+        metadata.setSales(order.getSales());
+        metadata.setComments(order.getComments());
+        metadata.setTrader(order.getTrader());
+        metadata.setProductType("SPOT_FWD");
+        metadata.setProductDetails(order.getTenor() + " resting order " + order.getId());
+        return metadata;
+    }
+
+    private void requireMatchingContext(LimitOrder order, String channel, String segment, String customerId) {
+        if (!order.getChannel().equals(channel) || !order.getSegment().equals(segment)
+                || !order.getCustomerId().equals(customerId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resting order context does not match.");
+        }
+    }
+
+    private void validate(String pair, String currency, double quantity, double limitPrice) {
+        if (pair == null || !pair.trim().matches("[A-Za-z]{6}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A six-letter currency pair is required.");
+        }
+        String normalizedPair = pair.trim().toUpperCase(Locale.ROOT);
+        String normalizedCurrency = textOr(currency, "").toUpperCase(Locale.ROOT);
+        if (!(normalizedCurrency.equals(normalizedPair.substring(0, 3))
+                || normalizedCurrency.equals(normalizedPair.substring(3)))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dealt currency must be one leg of the pair.");
+        }
+        if (quantity <= 0 || !Double.isFinite(quantity) || limitPrice <= 0 || !Double.isFinite(limitPrice)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quantity and limit price must be positive.");
+        }
+    }
+
+    private TimeInForce parseTimeInForce(String value) {
         try {
-            return TimeInForce.valueOf(defaultText(rawTimeInForce, "GTC").trim().toUpperCase(Locale.ROOT));
+            return TimeInForce.valueOf(textOr(value, "GTC").toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(BAD_REQUEST, "Unsupported time-in-force. Use GTC or GTD.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Time in force must be GTC or GTD.");
         }
     }
 
-    private LimitOrderStatus parseStatus(String rawStatus) {
+    private LimitOrderStatus parseStatus(String value) {
         try {
-            return LimitOrderStatus.valueOf(rawStatus.trim().toUpperCase(Locale.ROOT));
+            return LimitOrderStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(BAD_REQUEST, "Unsupported limit order status filter.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported order status.");
         }
     }
 
-    private String validateSpotTenor(String tenor) {
-        String normalizedTenor = normalizeTenor(tenor);
-
-        if (!"SP".equals(normalizedTenor)) {
-            throw new ResponseStatusException(BAD_REQUEST, "Limit orders are only supported for spot instruments.");
-        }
-
-        return normalizedTenor;
+    private com.example.fx.simulator.api.model.TimeInForce toContractTimeInForce(TimeInForce value) {
+        return value == TimeInForce.GTD
+                ? com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_TIME
+                : com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_CANCELLED;
     }
 
-    private void validateRequiredSpotFields(String ccyPair, String dealtCurrency) {
-        if (!hasText(ccyPair)) {
-            throw new ResponseStatusException(BAD_REQUEST, "Currency pair is required for a limit order.");
-        }
-
-        if (!hasText(dealtCurrency)) {
-            throw new ResponseStatusException(BAD_REQUEST, "Dealt currency is required for a limit order.");
-        }
-    }
-
-    private void validateOrderNumbers(double qty, double limitPrice) {
-        if (qty <= 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "Limit order quantity must be greater than zero.");
-        }
-
-        if (limitPrice <= 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "Limit price must be greater than zero.");
-        }
-    }
-
-    private LocalDate validateGoodTillDate(TimeInForce timeInForce, LocalDate goodTillDate, LocalDate today) {
-        if (timeInForce != TimeInForce.GTD) {
+    private OffsetDateTime expiry(TimeInForce timeInForce, LocalDate goodTillDate) {
+        if (timeInForce == TimeInForce.GTC) {
             return null;
         }
-
-        return today;
-    }
-
-    private String normalizeDirection(String direction) {
-        if ("SELL".equalsIgnoreCase(direction)) {
-            return "Sell";
-        }
-        if ("BUY".equalsIgnoreCase(direction)) {
-            return "Buy";
-        }
-        throw new ResponseStatusException(BAD_REQUEST, "Direction must be Buy or Sell.");
-    }
-
-    private String normalizeTenor(String tenor) {
-        return defaultText(tenor, "SP").trim().toUpperCase(Locale.ROOT);
-    }
-
-    private String normalizeText(String value) {
-        return value == null ? null : value.trim();
-    }
-
-    private String defaultText(String value, String fallback) {
-        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+        LocalDate date = goodTillDate == null ? LocalDate.now(clock) : goodTillDate;
+        return date.atTime(LocalTime.MAX).atZone(clock.getZone()).toOffsetDateTime();
     }
 
     private String nextOrderId() {
-        return "LO-" + LocalDate.now(clock).format(ORDER_ID_DATE) + "-" + System.currentTimeMillis();
+        return "ORD-" + LocalDate.now(clock).format(ORDER_DATE) + "-" + UUID.randomUUID();
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
+    private String textOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 }
-
-

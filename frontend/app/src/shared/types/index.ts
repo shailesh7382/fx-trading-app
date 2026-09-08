@@ -19,11 +19,29 @@ export type NotificationCategory =
 
 /** A quote as it arrives from the pricing API. */
 export interface FxRate {
+  quoteId?: string;
+  requestId?: string;
+  originalRequestId?: string;
+  responseId?: string;
+  responseAt?: string;
+  channel?: string;
+  segment?: string;
+  customerId?: string;
   ccyPair: string;
   tenor: Tenor;
+  contractTenor?: string;
   qty: number;
+  quantityCurrency?: string;
   bid: number;
   ask: number;
+  bidCoverPrice?: number;
+  askCoverPrice?: number;
+  bidPoints?: number;
+  askPoints?: number;
+  spotDate?: string;
+  valueDate?: string;
+  quotedAt?: string;
+  expiresAt?: string;
   source?: string;
   status?: string;
   updatedAt?: string;
@@ -62,12 +80,30 @@ export interface LookupItem {
 
 export interface Trade {
   id: string;
+  quoteId?: string;
+  requestId?: string;
+  originalRequestId?: string;
+  responseId?: string;
+  responseAt?: string;
+  channel?: string;
+  segment?: string;
+  customerId?: string;
+  idempotencyKey?: string;
   ccyPair: string;
   tenor: Tenor;
   qty: number;
   direction: Direction;
   dealtCurrency: string;
+  quantityCurrency?: string;
   price: number;
+  coverPrice?: number;
+  swapPoints?: number;
+  buyCurrency?: string;
+  buyQuantity?: number;
+  sellCurrency?: string;
+  sellQuantity?: number;
+  spotDate?: string;
+  valueDate?: string;
   customer?: string;
   rm?: string;
   sales?: string;
@@ -90,11 +126,20 @@ export type TradeDraft = Omit<Trade, 'id' | 'status' | 'bookingMode' | 'bookedAt
 
 export interface LimitOrder {
   id: string;
+  requestId?: string;
+  originalRequestId?: string;
+  responseId?: string;
+  responseAt?: string;
+  channel?: string;
+  segment?: string;
+  customerId?: string;
   ccyPair: string;
   tenor: Tenor;
   qty: number;
   direction: Direction;
   dealtCurrency: string;
+  quantityCurrency?: string;
+  contractTenor?: string;
   limitPrice: number;
   timeInForce: TimeInForce;
   goodTillDate?: string | null;
@@ -104,6 +149,16 @@ export interface LimitOrder {
   submittedAt?: string;
   executedAt?: string;
   executedPrice?: number;
+  expiresAt?: string | null;
+  lastEvaluatedAt?: string | null;
+  lastEvaluatedPrice?: number | null;
+  closedAt?: string | null;
+  simulatorTradeId?: string | null;
+  callbackUrl?: string;
+  callbackStatus?: string;
+  callbackAttempts?: number;
+  lastEventId?: string | null;
+  eventReceivedAt?: string | null;
   tradeDate?: string;
   settlementDate?: string;
 }
@@ -120,6 +175,10 @@ export interface LimitOrderDraft {
   tradeDate: string;
   settlementDate: string;
   trader: string;
+  requestId?: string;
+  channel?: string;
+  segment?: string;
+  customerId?: string;
 }
 
 export interface LimitOrderAmendment {

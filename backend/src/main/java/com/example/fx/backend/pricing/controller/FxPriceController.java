@@ -2,17 +2,14 @@ package com.example.fx.backend.pricing.controller;
 
 import com.example.fx.backend.pricing.dto.FxPriceDTO;
 
-import com.example.fx.backend.pricing.model.FxPrice;
 import com.example.fx.backend.pricing.service.FxPriceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/fxprices")
+@RequestMapping("/api/rates")
 public class FxPriceController {
 
     @Autowired
@@ -20,11 +17,7 @@ public class FxPriceController {
 
     @GetMapping
     public List<FxPriceDTO> getAllPrices() {
-        List<FxPriceDTO> allPrices = service.getAllPrices().stream()
-                .map(FxPriceDTO::new)
-                .collect(Collectors.toList());
-        Collections.sort(allPrices, FxPriceDTO.getComparator());
-        return allPrices;
+        return service.getAllPrices();
     }
 
     @GetMapping("/grid")
@@ -36,8 +29,4 @@ public class FxPriceController {
         return service.getGridPrices(search, tenor, sort, limit);
     }
 
-    @PostMapping
-    public FxPrice updatePrice(@RequestBody FxPrice fxPrice) {
-        return service.updatePrice(fxPrice);
-    }
 }

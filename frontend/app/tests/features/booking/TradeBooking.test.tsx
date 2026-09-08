@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import TradeBooking from '@/features/booking/TradeBooking';
@@ -13,6 +12,7 @@ import { TestWorkspaceShell, createRate, createUserContext, createWorkspaceConte
 
 vi.mock('@/shared/api/client', () => ({
   fetchLookup: vi.fn(),
+  extractApiMessage: vi.fn((_error, fallback) => fallback),
 }));
 
 import { fetchLookup } from '@/shared/api/client';
@@ -53,25 +53,13 @@ beforeEach(() => {
   });
 });
 
-test('defaults rate-launched booking to FX Spot/Fwd and switches product attributes by mode', async () => {
-  const user = userEvent.setup();
+test('limits booking to the spot and outright-forward products supported by the simulator contract', async () => {
   renderBookingScreen();
 
   const spotFwdToggle = await screen.findByRole('button', { name: /fx spot\/fwd/i });
   expect(spotFwdToggle.getAttribute('aria-pressed')).toBe('true');
 
-  await user.click(screen.getByRole('button', { name: /fx swap/i }));
-  expect(screen.getByLabelText(/far tenor/i)).toBeTruthy();
-  expect(screen.getByLabelText(/far leg rate/i)).toBeTruthy();
-  expect(screen.getByLabelText(/far settlement/i)).toBeTruthy();
-
-  await user.click(screen.getByRole('button', { name: /ndfs/i }));
-  expect(screen.getByLabelText(/fixing date/i)).toBeTruthy();
-  expect(screen.getByLabelText(/fixing source/i)).toBeTruthy();
-  expect(screen.getByLabelText(/nds currency/i)).toBeTruthy();
-
-  await user.click(screen.getByRole('button', { name: /bullion/i }));
-  expect(screen.getByLabelText(/^metal$/i)).toBeTruthy();
-  expect((screen.getByLabelText(/metal pair/i) as HTMLInputElement).value).toBe('XAUUSD');
-  expect(screen.getByLabelText(/bullion settlement/i)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /fx swap/i })).toBeNull();
+  expect(screen.queryByRole('button', { name: /ndfs/i })).toBeNull();
+  expect(screen.queryByRole('button', { name: /bullion/i })).toBeNull();
 });
