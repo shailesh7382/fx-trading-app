@@ -1,6 +1,7 @@
 # Oracle backend schema
 
-These scripts create the four tables persisted by the backend. They target Oracle
+These scripts create the five tables persisted by the backend, including the login-event audit table used
+by daily reporting. They target Oracle
 Database 19c or later and must be run as the application schema owner.
 
 Install with SQL*Plus or SQLcl:

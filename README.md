@@ -77,6 +77,26 @@ The UI uses these backend endpoints on port `8080`:
 Client connection details, business identity defaults, instrument universe, timeouts, and callback URL are
 configured under `trading-system.client.*` in `backend/src/main/resources/application.properties`.
 
+## Daily PDF reports
+
+The backend generates operational reports as downloadable PDF blobs through
+`GET /api/reports/daily/{report-type}?date=YYYY-MM-DD`. Supported report types are `executed-orders`, `trades`,
+`users-logged-in`, `users-traded`, and `live-orders`. Omitting `date` uses the current business date. Daily
+boundaries use `reports.zone-id`, which defaults to `Asia/Singapore` and can be overridden with
+`FX_REPORTS_ZONE_ID`.
+
+Successful logins are recorded in `BKND_USER_LOGIN_EVENT`, allowing historical daily login reports rather
+than relying on only the latest timestamp. The Oracle DDL and indexes are under `backend/sql`.
+
+Run all report downloads against a running backend with:
+
+```bash
+backend/batch/generate-all-daily-reports.sh 2026-09-13 ./reports
+```
+
+Individual resilient download scripts and their environment options are documented in
+[`backend/batch/README.md`](backend/batch/README.md).
+
 The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
 during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under
 `target/generated-sources`. The generated client interfaces are ready for the later backend integration.
