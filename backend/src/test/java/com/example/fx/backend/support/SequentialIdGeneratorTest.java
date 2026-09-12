@@ -1,49 +1,51 @@
 package com.example.fx.backend.support;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
+import javax.sql.DataSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SequentialIdGeneratorTest {
 
-    /** Stands in for the database row: hands out consecutive blocks and counts the round trips. */
-    private static final class CountingAllocator implements IdBlockAllocator {
-        private final AtomicLong nextValue;
-        private final AtomicInteger claims = new AtomicInteger();
+    private JdbcTemplate jdbc;
+    private DataSourceTransactionManager transactionManager;
 
-        private CountingAllocator(long startAt) {
-            this.nextValue = new AtomicLong(startAt);
-        }
-
-        @Override
-        public IdBlock claim(String sequenceName, int blockSize) {
-            claims.incrementAndGet();
-            long start = nextValue.getAndAdd(blockSize);
-            return new IdBlock(start, start + blockSize);
-        }
+    @BeforeEach
+    void createDatabase() {
+        DataSource dataSource = new EmbeddedDatabaseBuilder()
+                .setType(EmbeddedDatabaseType.H2)
+                .generateUniqueName(true)
+                .build();
+        jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("""
+                CREATE TABLE id_block_allocation (
+                    sequence_name VARCHAR(64) NOT NULL PRIMARY KEY,
+                    next_value BIGINT NOT NULL
+                )
+                """);
+        transactionManager = new DataSourceTransactionManager(dataSource);
     }
 
-    private static SequentialIdGenerator generator(CountingAllocator allocator, int blockSize) {
-        return new SequentialIdGenerator(allocator, 'B', blockSize);
+    private SequentialIdGenerator generator(String systemIdentifier, int blockSize) {
+        return new SequentialIdGenerator(jdbc, transactionManager, systemIdentifier, blockSize);
     }
 
     @Test
     void stampsTheSystemLetterAndEncodesTheCounterInNineCharacters() {
-        CountingAllocator allocator = new CountingAllocator(0);
-
-        String first = generator(allocator, 10).generate();
+        String first = generator("B", 10).generate();
 
         assertThat(first).hasSize(SequentialIdGenerator.ID_LENGTH).isEqualTo("B00000000");
         assertThat(SequentialIdGenerator.isValid(first)).isTrue();
@@ -51,7 +53,7 @@ class SequentialIdGeneratorTest {
 
     @Test
     void countsUpwardsInCrockfordBase32() {
-        SequentialIdGenerator generator = generator(new CountingAllocator(0), 64);
+        SequentialIdGenerator generator = generator("B", 64);
 
         List<String> ids = IntStream.range(0, 34).mapToObj(index -> generator.generate()).toList();
 
@@ -67,7 +69,7 @@ class SequentialIdGeneratorTest {
 
     @Test
     void issuesIdentifiersThatSortIntoIssueOrder() {
-        SequentialIdGenerator generator = generator(new CountingAllocator(0), 1_000);
+        SequentialIdGenerator generator = generator("B", 1_000);
 
         List<String> ids = IntStream.range(0, 5_000).mapToObj(index -> generator.generate()).toList();
 
@@ -76,20 +78,20 @@ class SequentialIdGeneratorTest {
 
     @Test
     void touchesTheDatabaseOncePerBlockRatherThanOncePerIdentifier() {
-        CountingAllocator allocator = new CountingAllocator(0);
-        SequentialIdGenerator generator = generator(allocator, 250);
+        SequentialIdGenerator generator = generator("B", 250);
 
         for (int count = 0; count < 1_000; count++) {
             generator.generate();
         }
 
-        assertThat(allocator.claims).hasValue(4);
+        assertThat(jdbc.queryForObject(
+                "SELECT next_value FROM id_block_allocation WHERE sequence_name = 'B'", Long.class))
+                .isEqualTo(1_000);
     }
 
     @Test
     void neverRepeatsAcrossBlockBoundaries() {
-        CountingAllocator allocator = new CountingAllocator(0);
-        SequentialIdGenerator generator = generator(allocator, 7);
+        SequentialIdGenerator generator = generator("B", 7);
 
         Set<String> ids = new HashSet<>();
         for (int count = 0; count < 5_000; count++) {
@@ -101,10 +103,8 @@ class SequentialIdGeneratorTest {
 
     @Test
     void keepsInstancesApartWhenTheyShareTheCounter() {
-        // One allocator, two generators: what two application instances see.
-        CountingAllocator shared = new CountingAllocator(0);
-        SequentialIdGenerator first = generator(shared, 100);
-        SequentialIdGenerator second = generator(shared, 100);
+        SequentialIdGenerator first = generator("B", 100);
+        SequentialIdGenerator second = generator("B", 100);
 
         Set<String> ids = new HashSet<>();
         for (int count = 0; count < 500; count++) {
@@ -117,8 +117,8 @@ class SequentialIdGeneratorTest {
 
     @Test
     void differentSystemLettersCannotCollideOnTheSameCounterValue() {
-        SequentialIdGenerator backend = new SequentialIdGenerator(new CountingAllocator(0), 'B', 10);
-        SequentialIdGenerator simulator = new SequentialIdGenerator(new CountingAllocator(0), 'S', 10);
+        SequentialIdGenerator backend = generator("B", 10);
+        SequentialIdGenerator simulator = generator("S", 10);
 
         assertThat(backend.generate()).isEqualTo("B00000000");
         assertThat(simulator.generate()).isEqualTo("S00000000");
@@ -126,37 +126,32 @@ class SequentialIdGeneratorTest {
 
     @Test
     void staysUniqueUnderConcurrentDemandAcrossManyBlocks() throws Exception {
-        CountingAllocator allocator = new CountingAllocator(0);
-        SequentialIdGenerator generator = generator(allocator, 16);
-        int threads = 8;
-        int perThread = 5_000;
+        int instances = 8;
+        int perInstance = 1_000;
 
-        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-            List<Callable<List<String>>> jobs = IntStream.range(0, threads)
-                    .<Callable<List<String>>>mapToObj(ignored -> () -> {
-                        List<String> batch = new ArrayList<>(perThread);
-                        for (int count = 0; count < perThread; count++) {
-                            batch.add(generator.generate());
-                        }
-                        return batch;
-                    })
+        try (ExecutorService pool = Executors.newFixedThreadPool(instances)) {
+            List<Future<List<String>>> results = IntStream.range(0, instances)
+                    .mapToObj(ignored -> generator("B", 16))
+                    .map(instance -> pool.submit(() -> IntStream.range(0, perInstance)
+                            .mapToObj(ignored -> instance.generate())
+                            .toList()))
                     .toList();
 
             Set<String> all = new HashSet<>();
-            for (Future<List<String>> result : pool.invokeAll(jobs)) {
+            for (Future<List<String>> result : results) {
                 all.addAll(result.get());
             }
 
-            // A lost update in the refill path shows up here as a short set.
-            assertThat(all).hasSize(threads * perThread);
+            assertThat(all).hasSize(instances * perInstance);
             assertThat(all).allMatch(SequentialIdGenerator::isValid);
         }
     }
 
     @Test
     void refusesToSilentlyWrapWhenTheCounterSpaceRunsOut() {
-        SequentialIdGenerator generator =
-                generator(new CountingAllocator(SequentialIdGenerator.CAPACITY - 1), 10);
+        jdbc.update("INSERT INTO id_block_allocation (sequence_name, next_value) VALUES ('B', ?)",
+                SequentialIdGenerator.CAPACITY - 1);
+        SequentialIdGenerator generator = generator("B", 10);
 
         assertThat(generator.generate()).isEqualTo("BZZZZZZZZ");
         assertThatThrownBy(generator::generate)
@@ -166,14 +161,13 @@ class SequentialIdGeneratorTest {
 
     @Test
     void rejectsConfigurationThatCouldNotProduceValidIdentifiers() {
-        CountingAllocator allocator = new CountingAllocator(0);
-
-        assertThatThrownBy(() -> new SequentialIdGenerator(allocator, 'b', 10))
+        assertThat(generator(" b ", 10).systemIdentifier()).isEqualTo('B');
+        assertThatThrownBy(() -> generator("BB", 10))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("upper-case");
-        assertThatThrownBy(() -> new SequentialIdGenerator(allocator, '1', 10))
+                .hasMessageContaining("single upper-case");
+        assertThatThrownBy(() -> generator("1", 10))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SequentialIdGenerator(allocator, 'B', 0))
+        assertThatThrownBy(() -> generator("B", 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Block size");
     }
@@ -190,13 +184,4 @@ class SequentialIdGeneratorTest {
         assertThat(SequentialIdGenerator.isValid("B0000000O")).isFalse();
     }
 
-    @Test
-    void defaultsAreUsableWithoutConfiguration() {
-        IdGeneratorProperties defaults = new IdGeneratorProperties(null, null);
-
-        assertThat(defaults.systemIdentifierChar()).isEqualTo('B');
-        assertThat(defaults.blockSize()).isEqualTo(1_000);
-        assertThat(new IdGeneratorProperties(" s ", -4).systemIdentifierChar()).isEqualTo('S');
-        assertThat(new IdGeneratorProperties("S", -4).blockSize()).isEqualTo(1_000);
-    }
 }

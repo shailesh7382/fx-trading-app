@@ -1,76 +1,56 @@
 package com.example.fx.backend.support;
 
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.Locale;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
-/**
- * Mints nine-character identifiers that are unique by construction rather than by
- * probability: a system letter followed by eight symbols encoding a counter no two
- * instances can ever draw twice.
- *
- * <pre>
- *   B 0 0 0 0 0 0 1 F
- *   ^ ^-------------^
- *   |      counter, Crockford base32, most significant symbol first
- *   system identifier
- * </pre>
- *
- * <p><strong>Uniqueness.</strong> {@link IdBlockAllocator} reserves ranges of counter
- * values from one database row, so a value is handed to exactly one instance, once.
- * There is no birthday problem and no retry loop — a duplicate is not unlikely, it is
- * impossible while the counter row is intact.
- *
- * <p><strong>Cost.</strong> The database is touched once per {@code blockSize} values
- * (a thousand by default); every identifier in between is an uncontended
- * {@link AtomicLong#getAndIncrement()}. Refills take a short lock so exactly one
- * thread reserves the next range while the others wait and retry.
- *
- * <p><strong>Ordering.</strong> The counter is encoded most significant symbol first,
- * so identifiers sort in the order they were issued. As a primary key that appends to
- * the index rather than scattering across it, which a random identifier cannot do.
- *
- * <p><strong>Gaps.</strong> Values left in a block when a process stops are never
- * reused. Identifiers are unique and increasing, not contiguous — with 32^8 values per
- * system letter, a process could restart a billion times and still not run short.
- *
- * <p>Instances are thread-safe and meant to be shared as a singleton.
- */
+/** Generates sortable, nine-character IDs backed by a durable database counter. */
 @Component
 public class SequentialIdGenerator {
 
     private static final Logger LOG = LoggerFactory.getLogger(SequentialIdGenerator.class);
+    private static final String ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    private static final int COUNTER_SYMBOLS = 8;
+    private static final int SYMBOL_BITS = 5;
+    private static final int SYMBOL_MASK = 31;
+    private static final String RESERVE =
+            "UPDATE id_block_allocation SET next_value = next_value + ? WHERE sequence_name = ?";
+    private static final String READ =
+            "SELECT next_value FROM id_block_allocation WHERE sequence_name = ?";
+    private static final String SEED =
+            "INSERT INTO id_block_allocation (sequence_name, next_value) VALUES (?, 0)";
 
-    /** Symbols carrying the counter, after the leading system identifier. */
-    public static final int COUNTER_SYMBOLS = 8;
-
-    /** Total identifier length, system identifier included. */
     public static final int ID_LENGTH = COUNTER_SYMBOLS + 1;
-
-    /** Counter values available to one system identifier: 32^8, about 1.1 trillion. */
-    public static final long CAPACITY = CrockfordBase32.capacity(COUNTER_SYMBOLS);
-
-    /** Matches exactly what {@link #generate()} produces, anchored. */
+    public static final long CAPACITY = 1L << (SYMBOL_BITS * COUNTER_SYMBOLS);
     public static final Pattern ID_PATTERN = Pattern.compile(
-            "^[A-Z][" + CrockfordBase32.characterClass() + "]{" + COUNTER_SYMBOLS + "}$");
+            "^[A-Z][" + ALPHABET + "]{" + COUNTER_SYMBOLS + "}$");
 
-    private final IdBlockAllocator allocator;
+    private final JdbcTemplate jdbc;
+    private final TransactionTemplate transactions;
     private final char systemIdentifier;
     private final String sequenceName;
     private final int blockSize;
 
-    private final ReentrantLock refillLock = new ReentrantLock();
-    private volatile Block block = Block.exhausted();
+    private long nextValue;
+    private long blockEnd;
 
-    public SequentialIdGenerator(IdBlockAllocator allocator, IdGeneratorProperties properties) {
-        this(allocator, properties.systemIdentifierChar(), properties.blockSize());
-    }
-
-    SequentialIdGenerator(IdBlockAllocator allocator, char systemIdentifier, int blockSize) {
-        if (systemIdentifier < 'A' || systemIdentifier > 'Z') {
+    public SequentialIdGenerator(
+            JdbcTemplate jdbc,
+            PlatformTransactionManager transactionManager,
+            @Value("${fx.id.system-identifier:B}") String systemIdentifier,
+            @Value("${fx.id.block-size:1000}") int blockSize) {
+        String normalized = systemIdentifier == null
+                ? ""
+                : systemIdentifier.trim().toUpperCase(Locale.ROOT);
+        if (!normalized.matches("[A-Z]")) {
             throw new IllegalArgumentException(
                     "System identifier must be a single upper-case letter, was '" + systemIdentifier + "'");
         }
@@ -78,16 +58,22 @@ public class SequentialIdGenerator {
             throw new IllegalArgumentException("Block size must be at least 1, was " + blockSize);
         }
 
-        this.allocator = allocator;
-        this.systemIdentifier = systemIdentifier;
-        this.sequenceName = String.valueOf(systemIdentifier);
+        this.jdbc = jdbc;
+        this.transactions = new TransactionTemplate(transactionManager);
+        this.transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        this.systemIdentifier = normalized.charAt(0);
+        this.sequenceName = normalized;
         this.blockSize = blockSize;
     }
 
-    /** @return an identifier no other caller, in this process or any other, will receive. */
-    public String generate() {
-        long value = nextValue();
+    /** @return an ID that remains unique across threads, restarts, and application instances. */
+    public synchronized String generate() {
+        if (nextValue >= blockEnd) {
+            reserveBlock();
+        }
 
+        long value = nextValue++;
         if (value >= CAPACITY) {
             throw new IllegalStateException("Identifier space for system '" + systemIdentifier
                     + "' is exhausted after " + CAPACITY + " identifiers");
@@ -95,7 +81,10 @@ public class SequentialIdGenerator {
 
         char[] id = new char[ID_LENGTH];
         id[0] = systemIdentifier;
-        CrockfordBase32.encodeInto(value, id, 1, COUNTER_SYMBOLS);
+        for (int position = ID_LENGTH - 1; position > 0; position--) {
+            id[position] = ALPHABET.charAt((int) (value & SYMBOL_MASK));
+            value >>>= SYMBOL_BITS;
+        }
         return new String(id);
     }
 
@@ -103,71 +92,42 @@ public class SequentialIdGenerator {
         return systemIdentifier;
     }
 
-    /** Whether a string could have been produced by some instance of this generator. */
     public static boolean isValid(String candidate) {
         return candidate != null && ID_PATTERN.matcher(candidate).matches();
     }
 
-    /**
-     * Takes the next counter value, reserving a fresh block when the current one runs
-     * out. The common path never blocks; only the thread that finds the block empty
-     * takes the refill lock, and the rest re-read the new block and carry on.
-     */
-    private long nextValue() {
-        while (true) {
-            Block current = block;
-            long claimed = current.claim();
-
-            if (claimed >= 0) {
-                return claimed;
-            }
-
-            refill(current);
-        }
-    }
-
-    private void refill(Block exhausted) {
-        refillLock.lock();
-        try {
-            if (block != exhausted) {
-                // Another thread reserved a block while this one waited for the lock.
-                return;
-            }
-
-            IdBlockAllocator.IdBlock reserved = allocator.claim(sequenceName, blockSize);
-            LOG.debug("Refilled identifier block system={} start={} end={}",
-                    systemIdentifier, reserved.start(), reserved.end());
-            block = new Block(reserved.start(), reserved.end());
-        } finally {
-            refillLock.unlock();
-        }
-    }
-
-    /** A reserved range being handed out; {@code claim} returns -1 once it is spent. */
-    private static final class Block {
-        private final AtomicLong cursor;
-        private final long end;
-
-        private Block(long start, long end) {
-            this.cursor = new AtomicLong(start);
-            this.end = end;
-        }
-
-        private static Block exhausted() {
-            return new Block(0, 0);
-        }
-
-        private long claim() {
-            long candidate = cursor.get();
-
-            while (candidate < end) {
-                if (cursor.compareAndSet(candidate, candidate + 1)) {
-                    return candidate;
+    private void reserveBlock() {
+        long[] block = transactions.execute(status -> {
+            if (jdbc.update(RESERVE, blockSize, sequenceName) == 0) {
+                seedCounter();
+                if (jdbc.update(RESERVE, blockSize, sequenceName) == 0) {
+                    throw new IllegalStateException(
+                            "Could not reserve an identifier block for sequence " + sequenceName);
                 }
-                candidate = cursor.get();
             }
 
-            return -1;
+            Long end = jdbc.queryForObject(READ, Long.class, sequenceName);
+            if (end == null) {
+                throw new IllegalStateException(
+                        "Identifier sequence " + sequenceName + " disappeared while being reserved");
+            }
+            return new long[]{end - blockSize, end};
+        });
+
+        if (block == null) {
+            throw new IllegalStateException("Identifier block transaction returned no result");
+        }
+        nextValue = block[0];
+        blockEnd = block[1];
+        LOG.debug("Reserved identifier block system={} start={} end={}",
+                systemIdentifier, nextValue, blockEnd);
+    }
+
+    private void seedCounter() {
+        try {
+            jdbc.update(SEED, sequenceName);
+        } catch (DuplicateKeyException alreadyCreated) {
+            LOG.debug("Identifier sequence {} was created concurrently", sequenceName);
         }
     }
 }

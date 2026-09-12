@@ -70,7 +70,7 @@ class LimitOrderServiceTest {
 
         LimitOrder placed = service.submitLimitOrder(input);
         assertThat(placed.getStatus()).isEqualTo(LimitOrderStatus.ACTIVE);
-        assertThat(placed.getId()).isEqualTo("A1b2C3d4E5f6");
+        assertThat(placed.getId()).isEqualTo("B00000001");
         assertThat(placed.getOriginalRequestId()).isEqualTo("place-request");
         assertThat(placed.getCallbackStatus()).isEqualTo("NOT_REQUIRED");
 

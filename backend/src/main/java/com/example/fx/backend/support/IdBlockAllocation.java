@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
  * The allocation high-water mark for one identifier sequence.
  *
  * <p>This entity exists so schema generation creates the table; the counter itself is
- * bumped with plain JDBC in {@link IdBlockAllocator}, because a persistence-context
+ * bumped with plain JDBC in {@link SequentialIdGenerator}, because a persistence-context
  * read-modify-write cannot give the atomicity the allocation needs.
  */
 @Entity
