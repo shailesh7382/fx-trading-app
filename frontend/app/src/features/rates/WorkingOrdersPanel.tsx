@@ -1,6 +1,7 @@
 import { Box, Button, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded';
 import type { LimitOrder, NormalizedRate, TimeInForce } from '@/shared/types';
+import { DirectionTag } from '@/shared/trading/Tags';
 import { formatDateTime, formatRate } from '@/shared/utils/formatters';
 import {
   formatPips,
@@ -30,35 +31,6 @@ interface WorkingOrdersPanelProps {
   onSaveAmend: (order: LimitOrder) => void;
   onResetAmend: () => void;
   onCancel: (order: LimitOrder) => void;
-}
-
-function SideTag({ direction }: { direction: LimitOrder['direction'] }) {
-  const token = getDirectionToken(direction);
-
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        px: 0.7,
-        height: 19,
-        minWidth: 40,
-        borderRadius: 0.75,
-        bgcolor: token.bg,
-        border: '1px solid',
-        borderColor: token.border,
-        color: token.fg,
-        fontSize: '0.64rem',
-        fontWeight: 700,
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-      }}
-    >
-      {direction}
-    </Box>
-  );
 }
 
 /**
@@ -125,7 +97,7 @@ function WorkingOrdersPanel({
                 <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
                   <Box sx={{ minWidth: 0 }}>
                     <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
-                      <SideTag direction={order.direction} />
+                      <DirectionTag direction={order.direction} dense />
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                         {order.direction} {order.ccyPair}
                       </Typography>

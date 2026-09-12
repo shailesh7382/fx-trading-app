@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import type { AlertColor } from '@mui/material';
 import {
   Alert,
   Box,
-  Button,
-  LinearProgress,
+  Divider,
   MenuItem,
   Paper,
   Stack,
@@ -13,18 +21,23 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { Chip, Divider } from '@mui/material';
-import DoneAllRoundedIcon from '@mui/icons-material/DoneAllRounded';
-import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded';
-import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
-import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { extractApiMessage, fetchLookup } from '@/shared/api/client';
 import { fallbackCustomers, fallbackRelationshipManagers, fallbackSales } from '@/shared/demo/demoData';
-import { calculateSettlementDate, formatCurrency, formatDateTime, formatNotional, formatRate, getCurrencyCodes } from '@/shared/utils/formatters';
+import {
+  calculateSettlementDate,
+  formatCurrency,
+  formatDateTime,
+  formatNotional,
+  formatRate,
+  getCurrencyCodes,
+} from '@/shared/utils/formatters';
 import { useUser } from '@/features/auth/UserProvider';
 import { useWorkspaceContext } from '@/features/workspace/useWorkspaceData';
 import type { Direction, FxRate, LookupItem, ProductType, Trade } from '@/shared/types';
+import TicketSummary from './TicketSummary';
+import TradeConfirmation from './TradeConfirmation';
+import { getDirectionToken, getOffMarketPips, getSettlementLegs } from './presentation';
 
 const tenorOptions = ['SP', '1W', '1M', '3M', '6M', '1Y'];
 const directionOptions: Direction[] = ['Buy', 'Sell'];
@@ -170,6 +183,35 @@ function buildInitialForm(
     bullionSettlement: 'Unallocated',
     comments: '',
   };
+}
+
+/** A labelled group of ticket fields. Sections are what turn a form into a ticket. */
+function FormSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Box>
+      <Typography
+        component="h3"
+        sx={{
+          mb: 1.1,
+          fontSize: '0.66rem',
+          fontWeight: 800,
+          letterSpacing: '0.1em',
+          color: 'text.secondary',
+        }}
+      >
+        {title}
+      </Typography>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1.25,
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' },
+        }}
+      >
+        {children}
+      </Box>
+    </Box>
+  );
 }
 
 function TradeBooking() {
@@ -596,16 +638,30 @@ function TradeBooking() {
     }
   };
 
-  const bookingPaperSx = {
-    borderRadius: 1,
-    border: '1px solid',
-    borderColor: 'divider',
-    bgcolor: 'background.paper',
-    backgroundImage: 'none',
-    boxShadow: 'none',
-  };
+  const activeMarketPrice = activeRate ? Number(getMarketPrice(formData.direction, activeRate)) : null;
+  const settlementLegs = getSettlementLegs(
+    formData.ccyPair,
+    formData.direction,
+    formData.dealtCurrency,
+    Number(formData.qty || 0),
+    Number(formData.price || 0)
+  );
+  const offMarketPips = getOffMarketPips(
+    formData.ccyPair,
+    formData.direction,
+    Number(formData.price || 0),
+    activeMarketPrice
+  );
+  const directionToken = getDirectionToken(formData.direction);
 
-  const quoteProtectionValue = quoteTimerActive ? Math.max(0, (quoteTimeLeft / quoteDurationSeconds) * 100) : 0;
+  const timerHint =
+    formData.productType !== 'SPOT_FWD'
+      ? 'Quote timer applies to FX Spot/Fwd only.'
+      : quoteTimerActive
+        ? quoteExpired
+          ? 'Quote expired — refresh before booking.'
+          : `Price valid for ${quoteDurationSeconds} seconds.`
+        : 'Complete required fields to start the timer.';
 
   const confirmationDetails: Array<[string, string | undefined]> = confirmation
     ? [
@@ -629,28 +685,35 @@ function TradeBooking() {
       ]
     : [];
 
-  const confirmationRows = confirmationDetails.filter(
-    ([, value]) => String(value ?? '').trim().length > 0
-  );
+  const confirmationRows = confirmationDetails.filter(([, value]) => String(value ?? '').trim().length > 0);
+
+  const faceSx = {
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    transition: 'visibility 0s linear 350ms',
+    '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+  } as const;
 
   return (
-    <Stack
-      spacing={2.25}
+    <Box
+      component="form"
+      onSubmit={handleSubmit}
       sx={{
-        '& .MuiInputBase-root': {
-          bgcolor: 'background.paper',
-        },
+        display: 'grid',
+        gap: { xs: 1.5, md: 2 },
+        alignItems: 'start',
+        gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(296px, 340px)' },
+        maxWidth: 1240,
+        '& .MuiInputBase-root': { bgcolor: 'background.paper' },
       }}
     >
+      <Stack spacing={{ xs: 1.5, md: 2 }} sx={{ minWidth: 0 }}>
+        {message ? (
+          <Alert severity={severity} onClose={() => setMessage('')}>
+            {message}
+          </Alert>
+        ) : null}
 
-      <Box
-        sx={{
-          display: 'grid',
-          gap: 2,
-          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.45fr) minmax(340px, 0.85fr)' },
-          alignItems: 'start',
-        }}
-      >
         <Box ref={flipSceneRef} sx={{ perspective: '2000px', minWidth: 0, scrollMarginTop: 96 }}>
           <Box
             sx={{
@@ -661,152 +724,135 @@ function TradeBooking() {
               '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
             }}
           >
-        <Paper
-          component="form"
-          onSubmit={handleSubmit}
-          aria-hidden={confirmation ? 'true' : undefined}
-          sx={{
-            ...bookingPaperSx,
-            p: { xs: 1.75, md: 2.25 },
-            ...(confoInFlow ? { position: 'absolute', inset: 0, overflow: 'hidden' } : null),
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            visibility: confirmation ? 'hidden' : 'visible',
-            transition: 'visibility 0s linear 350ms',
-            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
-          }}
-        >
-          <Stack spacing={2}>
-            {message ? <Alert severity={severity}>{message}</Alert> : null}
-
-            <Box>
-              <ToggleButtonGroup
-                exclusive
-                value={formData.productType}
-                onChange={handleProductTypeChange}
-                aria-label="fx product type"
+            <Paper
+              aria-hidden={confirmation ? 'true' : undefined}
+              sx={{
+                ...faceSx,
+                overflow: 'hidden',
+                ...(confoInFlow ? { position: 'absolute', inset: 0 } : null),
+                visibility: confirmation ? 'hidden' : 'visible',
+              }}
+            >
+              <Stack
+                direction="row"
                 sx={{
-                  width: '100%',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.5,
                   flexWrap: 'wrap',
-                  gap: 0.75,
-                  '& .MuiToggleButtonGroup-grouped': {
-                    flex: { xs: '1 1 calc(50% - 6px)', md: '1 1 0' },
-                    borderRadius: 1,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    px: 1,
-                    py: 0.8,
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    color: 'text.secondary',
-                    bgcolor: 'background.paper',
-                  },
-                  '& .Mui-selected': {
-                    color: 'primary.contrastText !important',
-                    bgcolor: 'primary.main !important',
-                    borderColor: 'primary.main !important',
-                  },
+                  px: { xs: 1.75, md: 2.25 },
+                  py: 1.25,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.default',
                 }}
               >
-                {productTypeOptions.map((option) => (
-                  <ToggleButton key={option.value} value={option.value} aria-label={option.label}>
-                    {option.label}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                {getProductDescription(formData.productType)}
-              </Typography>
-            </Box>
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={formData.productType}
+                  onChange={handleProductTypeChange}
+                  aria-label="fx product type"
+                  sx={{
+                    gap: 0.5,
+                    flexWrap: 'wrap',
+                    '& .MuiToggleButtonGroup-grouped': {
+                      borderRadius: '999px !important',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      px: 1.25,
+                      py: 0.35,
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      color: 'text.secondary',
+                      bgcolor: 'background.paper',
+                    },
+                    '& .Mui-selected': {
+                      color: 'primary.contrastText !important',
+                      bgcolor: 'primary.main !important',
+                      borderColor: 'primary.main !important',
+                    },
+                  }}
+                >
+                  {productTypeOptions.map((option) => (
+                    <ToggleButton key={option.value} value={option.value} aria-label={option.label}>
+                      {option.label}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
+                  {getProductDescription(formData.productType)}
+                </Typography>
+              </Stack>
 
-            <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' } }}>
-              {formData.productType === 'BULLION' ? (
-                <>
-                  <TextField size="small" select label="Metal" name="metalType" value={formData.metalType} onChange={handleFieldChange}>
-                    {Object.keys(bullionMetalPairs).map((metalOption) => (
-                      <MenuItem key={metalOption} value={metalOption}>
-                        {metalOption}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField size="small" label={pairLabel} name="ccyPair" value={formData.ccyPair} disabled />
-                </>
-              ) : (
-                <>
-                  <TextField size="small" select label={pairLabel} name="ccyPair" value={formData.ccyPair} onChange={handleFieldChange}>
-                    {rates.map((rate) => (
-                      <MenuItem key={`${rate.ccyPair}-${rate.tenor}`} value={rate.ccyPair}>
-                        {rate.ccyPair}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField size="small" select label={tenorLabel} name="tenor" value={formData.tenor} onChange={handleFieldChange}>
-                    {tenorOptions.map((option) => (
-                      <MenuItem key={option} value={option}>
-                        {option}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </>
-              )}
-              <TextField size="small" select label="Direction" name="direction" value={formData.direction} onChange={handleFieldChange}>
-                {directionOptions.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField size="small" label={quantityLabel} name="qty" value={formData.qty} onChange={handleFieldChange} type="number" />
-              <TextField size="small" select label="Dealt currency" name="dealtCurrency" value={formData.dealtCurrency} onChange={handleFieldChange}>
-                {dealtCurrencyOptions.map((currency) => (
-                  <MenuItem key={currency} value={currency}>
-                    {currency}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField size="small" label={priceLabel} name="price" value={formData.price} onChange={handleFieldChange} type="number" />
-              <TextField
-                size="small"
-                label="Trade date"
-                name="tradeDate"
-                value={formData.tradeDate}
-                onChange={handleFieldChange}
-                type="date"
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
-              <TextField
-                size="small"
-                label={settlementLabel}
-                name="settlementDate"
-                value={formData.settlementDate}
-                onChange={handleFieldChange}
-                type="date"
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
-              {formData.productType === 'SWAP' ? (
-                <>
-                  <TextField size="small" select label="Far tenor" name="farTenor" value={formData.farTenor} onChange={handleFieldChange}>
-                    {tenorOptions.filter((option) => option !== 'SP').map((option) => (
-                      <MenuItem key={option} value={option}>
-                        {option}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField size="small" label="Far leg rate" name="farPrice" value={formData.farPrice} onChange={handleFieldChange} type="number" />
+              <Stack
+                spacing={2}
+                divider={<Divider flexItem />}
+                sx={{ px: { xs: 1.75, md: 2.25 }, py: { xs: 1.75, md: 2 } }}
+              >
+                <FormSection title="INSTRUMENT">
+                  {formData.productType === 'BULLION' ? (
+                    <>
+                      <TextField size="small" select label="Metal" name="metalType" value={formData.metalType} onChange={handleFieldChange}>
+                        {Object.keys(bullionMetalPairs).map((metalOption) => (
+                          <MenuItem key={metalOption} value={metalOption}>
+                            {metalOption}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField size="small" label={pairLabel} name="ccyPair" value={formData.ccyPair} disabled />
+                    </>
+                  ) : (
+                    <>
+                      <TextField size="small" select label={pairLabel} name="ccyPair" value={formData.ccyPair} onChange={handleFieldChange}>
+                        {rates.map((rate) => (
+                          <MenuItem key={`${rate.ccyPair}-${rate.tenor}`} value={rate.ccyPair}>
+                            {rate.ccyPair}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField size="small" select label={tenorLabel} name="tenor" value={formData.tenor} onChange={handleFieldChange}>
+                        {tenorOptions.map((option) => (
+                          <MenuItem key={option} value={option}>
+                            {option}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </>
+                  )}
                   <TextField
                     size="small"
-                    label="Far settlement"
-                    name="farSettlementDate"
-                    value={formData.farSettlementDate}
+                    select
+                    label="Direction"
+                    name="direction"
+                    value={formData.direction}
                     onChange={handleFieldChange}
-                    type="date"
-                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ '& .MuiSelect-select': { color: directionToken.fg, fontWeight: 700 } }}
+                  >
+                    {directionOptions.map((option) => (
+                      <MenuItem key={option} value={option}>
+                        {option}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </FormSection>
+
+                <FormSection title="ECONOMICS">
+                  <TextField
+                    size="small"
+                    label={quantityLabel}
+                    name="qty"
+                    value={formData.qty}
+                    onChange={handleFieldChange}
+                    type="number"
+                    helperText={
+                      Number(formData.qty)
+                        ? `${formatNotional(formData.qty)} ${formData.dealtCurrency}`.trim()
+                        : 'Enter the dealt amount'
+                    }
+                    slotProps={{ formHelperText: { sx: { mx: 0, fontSize: '0.68rem' } } }}
                   />
-                </>
-              ) : null}
-              {formData.productType === 'NDF' ? (
-                <>
-                  <TextField size="small" select label="NDS currency" name="nonDeliverableCurrency" value={formData.nonDeliverableCurrency} onChange={handleFieldChange}>
+                  <TextField size="small" select label="Dealt currency" name="dealtCurrency" value={formData.dealtCurrency} onChange={handleFieldChange}>
                     {dealtCurrencyOptions.map((currency) => (
                       <MenuItem key={currency} value={currency}>
                         {currency}
@@ -815,212 +861,179 @@ function TradeBooking() {
                   </TextField>
                   <TextField
                     size="small"
-                    label="Fixing date"
-                    name="fixingDate"
-                    value={formData.fixingDate}
+                    label={priceLabel}
+                    name="price"
+                    value={formData.price}
+                    onChange={handleFieldChange}
+                    type="number"
+                    helperText={
+                      activeMarketPrice
+                        ? `Market ${formatRate(activeMarketPrice)}`
+                        : 'No live quote for this pair'
+                    }
+                    slotProps={{ formHelperText: { sx: { mx: 0, fontSize: '0.68rem' } } }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Trade date"
+                    name="tradeDate"
+                    value={formData.tradeDate}
                     onChange={handleFieldChange}
                     type="date"
                     slotProps={{ inputLabel: { shrink: true } }}
                   />
-                  <TextField size="small" select label="Fixing source" name="fixingSource" value={formData.fixingSource} onChange={handleFieldChange}>
-                    {fixingSourceOptions.map((option) => (
-                      <MenuItem key={option} value={option}>
-                        {option}
+                  <TextField
+                    size="small"
+                    label={settlementLabel}
+                    name="settlementDate"
+                    value={formData.settlementDate}
+                    onChange={handleFieldChange}
+                    type="date"
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                  {formData.productType === 'SWAP' ? (
+                    <>
+                      <TextField size="small" select label="Far tenor" name="farTenor" value={formData.farTenor} onChange={handleFieldChange}>
+                        {tenorOptions
+                          .filter((option) => option !== 'SP')
+                          .map((option) => (
+                            <MenuItem key={option} value={option}>
+                              {option}
+                            </MenuItem>
+                          ))}
+                      </TextField>
+                      <TextField size="small" label="Far leg rate" name="farPrice" value={formData.farPrice} onChange={handleFieldChange} type="number" />
+                      <TextField
+                        size="small"
+                        label="Far settlement"
+                        name="farSettlementDate"
+                        value={formData.farSettlementDate}
+                        onChange={handleFieldChange}
+                        type="date"
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </>
+                  ) : null}
+                  {formData.productType === 'NDF' ? (
+                    <>
+                      <TextField size="small" select label="NDS currency" name="nonDeliverableCurrency" value={formData.nonDeliverableCurrency} onChange={handleFieldChange}>
+                        {dealtCurrencyOptions.map((currency) => (
+                          <MenuItem key={currency} value={currency}>
+                            {currency}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField
+                        size="small"
+                        label="Fixing date"
+                        name="fixingDate"
+                        value={formData.fixingDate}
+                        onChange={handleFieldChange}
+                        type="date"
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                      <TextField size="small" select label="Fixing source" name="fixingSource" value={formData.fixingSource} onChange={handleFieldChange}>
+                        {fixingSourceOptions.map((option) => (
+                          <MenuItem key={option} value={option}>
+                            {option}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </>
+                  ) : null}
+                  {formData.productType === 'BULLION' ? (
+                    <TextField size="small" select label="Bullion settlement" name="bullionSettlement" value={formData.bullionSettlement} onChange={handleFieldChange}>
+                      {bullionSettlementOptions.map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {option}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  ) : null}
+                </FormSection>
+
+                <FormSection title="COUNTERPARTY">
+                  <TextField size="small" select label="Relationship manager" name="rm" value={formData.rm} onChange={handleFieldChange}>
+                    {relationshipManagers.map((rm) => (
+                      <MenuItem key={rm.id} value={rm.name}>
+                        {rm.name}
                       </MenuItem>
                     ))}
                   </TextField>
-                </>
-              ) : null}
-              {formData.productType === 'BULLION' ? (
-                <TextField size="small" select label="Bullion settlement" name="bullionSettlement" value={formData.bullionSettlement} onChange={handleFieldChange}>
-                  {bullionSettlementOptions.map((option) => (
-                    <MenuItem key={option} value={option}>
-                      {option}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              ) : null}
-            </Box>
-
-            <Box>
-              <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' } }}>
-                <TextField size="small" select label="Relationship manager" name="rm" value={formData.rm} onChange={handleFieldChange}>
-                  {relationshipManagers.map((rm) => (
-                    <MenuItem key={rm.id} value={rm.name}>
-                      {rm.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField size="small" select label="Sales" name="sales" value={formData.sales} onChange={handleFieldChange}>
-                  {salesPeople.map((salesPerson) => (
-                    <MenuItem key={salesPerson.id} value={salesPerson.name}>
-                      {salesPerson.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  size="small"
-                  label="Comments"
-                  name="comments"
-                  value={formData.comments}
-                  onChange={handleFieldChange}
-                  multiline
-                  rows={3}
-                  sx={{ gridColumn: { xs: 'auto', md: '1 / -1' } }}
-                />
-              </Box>
-            </Box>
-
-            <Box
-              sx={{
-                p: 1.25,
-                borderRadius: 1,
-                bgcolor: 'background.default',
-              }}
-            >
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <LinearProgress
-                  variant="determinate"
-                  value={quoteProtectionValue}
-                  color={quoteExpired ? 'error' : 'primary'}
-                  sx={{
-                    flex: 1,
-                    height: 8,
-                    borderRadius: 1,
-                    bgcolor: 'divider',
-                  }}
-                />
-                <Typography variant="body2" color={quoteExpired ? 'error.main' : 'primary.light'} sx={{ flexShrink: 0, minWidth: 88, textAlign: 'right' }}>
-                  {!quoteTimerActive ? 'Awaiting' : quoteExpired ? '0s left' : `${quoteTimeLeft}s left`}
-                </Typography>
+                  <TextField size="small" select label="Sales" name="sales" value={formData.sales} onChange={handleFieldChange}>
+                    {salesPeople.map((salesPerson) => (
+                      <MenuItem key={salesPerson.id} value={salesPerson.name}>
+                        {salesPerson.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    size="small"
+                    label="Comments"
+                    name="comments"
+                    value={formData.comments}
+                    onChange={handleFieldChange}
+                    multiline
+                    rows={2}
+                    sx={{ gridColumn: { xs: 'auto', sm: '1 / -1', md: 'auto' } }}
+                  />
+                </FormSection>
               </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-                {formData.productType !== 'SPOT_FWD'
-                  ? 'Quote timer applies to FX Spot/Fwd only.'
-                  : quoteTimerActive
-                  ? `Price valid for ${quoteDurationSeconds} seconds.`
-                  : 'Complete required fields to start the timer.'}
-              </Typography>
-            </Box>
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between' }}>
-              <Button size="small" type="button" variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={repriceTicket}>
-                Refresh quote
-              </Button>
-              <Button size="small" type="submit" variant="contained" startIcon={<DoneAllRoundedIcon />} disabled={isSubmitting || quoteExpired || !isFormComplete} sx={{ minWidth: { sm: 168 } }}>
-                {isSubmitting ? 'Booking trade…' : 'Book trade'}
-              </Button>
-            </Stack>
-          </Stack>
-        </Paper>
+            </Paper>
 
             <Paper
               aria-hidden={confirmation ? undefined : 'true'}
               sx={{
-                ...bookingPaperSx,
-                ...(confoInFlow ? null : { position: 'absolute', inset: 0, overflow: 'auto' }),
-                p: { xs: 1.75, md: 2.25 },
-                borderColor: 'success.main',
+                ...faceSx,
+                overflow: 'hidden',
+                ...(confoInFlow ? null : { position: 'absolute', inset: 0 }),
+                borderColor: '#BADFD0',
                 transform: 'rotateY(180deg)',
-                backfaceVisibility: 'hidden',
-                WebkitBackfaceVisibility: 'hidden',
                 visibility: confirmation ? 'visible' : 'hidden',
-                transition: 'visibility 0s linear 350ms',
-                '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
               }}
             >
               {confirmation ? (
-                <Stack spacing={2}>
-                  <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-                    <ReceiptLongRoundedIcon color="success" />
-                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Typography variant="h5">Trade confirmation</Typography>
-                      <Typography color="text.secondary">Trade {confirmation.id} booked.</Typography>
-                    </Box>
-                    <Chip
-                      size="small"
-                      color={confirmation.bookingMode === 'live' ? 'primary' : 'warning'}
-                      label={confirmation.bookingMode === 'live' ? 'Live capture' : 'Local fallback'}
-                    />
-                  </Stack>
-
-                  <Divider />
-
-                  <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' } }}>
-                    {confirmationRows.map(([label, value]) => (
-                      <Stack key={label} direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
-                        <Typography color="text.secondary">{label}</Typography>
-                        <Typography sx={{ fontWeight: 600, textAlign: 'right' }}>{value}</Typography>
-                      </Stack>
-                    ))}
-                  </Box>
-
-                  {confirmation.productDetails ? (
-                    <Typography color="text.secondary">{confirmation.productDetails}</Typography>
-                  ) : null}
-                  {confirmation.comments ? <Typography color="text.secondary">{confirmation.comments}</Typography> : null}
-
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between' }}>
-                    <Button size="small" variant="outlined" startIcon={<AddCircleOutlineRoundedIcon />} onClick={startNewTicket}>
-                      Book another
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<ReceiptLongRoundedIcon />}
-                      onClick={() => {
-                        window.scrollTo(0, 0);
-                        navigate('/app/blotter', { state: { bookedTradeId: confirmation.id } });
-                      }}
-                      sx={{ minWidth: { sm: 168 } }}
-                    >
-                      View in blotter
-                    </Button>
-                  </Stack>
-                </Stack>
+                <TradeConfirmation
+                  trade={confirmation}
+                  rows={confirmationRows}
+                  onBookAnother={startNewTicket}
+                  onViewBlotter={() => {
+                    window.scrollTo(0, 0);
+                    navigate('/app/blotter', { state: { bookedTradeId: confirmation.id } });
+                  }}
+                />
               ) : null}
             </Paper>
           </Box>
         </Box>
+      </Stack>
 
-        <Stack spacing={2} sx={{ position: { xl: 'sticky' }, top: { xl: 104 } }}>
-          <Paper sx={{ ...bookingPaperSx, p: 2 }}>
-            <Typography variant="h6">Quote summary</Typography>
-            <Stack spacing={1} sx={{ mt: 1.25 }}>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">Instrument</Typography>
-                <Typography>{formData.ccyPair || 'Select a pair'}</Typography>
-              </Stack>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">Direction</Typography>
-                <Typography>{formData.direction}</Typography>
-              </Stack>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">Tradeable amount</Typography>
-                <Typography>{formatNotional(formData.qty)}</Typography>
-              </Stack>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">All-in notional</Typography>
-                <Typography>{formatCurrency(notional)}</Typography>
-              </Stack>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">Live price</Typography>
-                <Typography>{formData.productType === 'SPOT_FWD' && activeRate ? formatRate(formData.price) : 'Manual'}</Typography>
-              </Stack>
-              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Typography color="text.secondary">Structure</Typography>
-                <Typography sx={{ maxWidth: 180, textAlign: 'right' }}>{buildProductDetails(formData)}</Typography>
-              </Stack>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">Customer</Typography>
-                <Typography>{formData.customer || DEFAULT_CUSTOMER_NAME}</Typography>
-              </Stack>
-            </Stack>
-          </Paper>
-
-        </Stack>
+      <Box sx={{ position: { lg: 'sticky' }, top: { lg: 16 }, minWidth: 0 }}>
+        <TicketSummary
+          ccyPair={formData.ccyPair}
+          tenor={formData.tenor}
+          direction={formData.direction}
+          quantity={Number(formData.qty || 0)}
+          dealtCurrency={formData.dealtCurrency}
+          price={formData.price}
+          notional={notional}
+          settlementDate={formData.settlementDate}
+          customer={formData.customer || DEFAULT_CUSTOMER_NAME}
+          legs={settlementLegs}
+          offMarketPips={offMarketPips}
+          isLivePrice={formData.productType === 'SPOT_FWD' && Boolean(activeRate)}
+          quoteTimerActive={quoteTimerActive}
+          quoteTimeLeft={quoteTimeLeft}
+          quoteDurationSeconds={quoteDurationSeconds}
+          quoteExpired={quoteExpired}
+          timerHint={timerHint}
+          showActions={!confirmation}
+          isSubmitting={isSubmitting}
+          canBook={!isSubmitting && !quoteExpired && isFormComplete}
+          onRefresh={repriceTicket}
+        />
       </Box>
-    </Stack>
+    </Box>
   );
 }
 

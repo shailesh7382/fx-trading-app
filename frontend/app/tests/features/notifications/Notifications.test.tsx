@@ -65,11 +65,12 @@ function renderNotificationsScreen() {
 test('renders server notifications and summary metrics', async () => {
   renderNotificationsScreen();
 
-  expect(await screen.findByRole('heading', { name: /notifications/i })).toBeTruthy();
-  expect(screen.getByText(/EURUSD trade booked/i)).toBeTruthy();
+  expect(await screen.findByText(/EURUSD trade booked/i)).toBeTruthy();
   expect(screen.getByText(/GBPUSD limit order working/i)).toBeTruthy();
   expect(screen.getByText(/EURUSD shows the widest live spread/i)).toBeTruthy();
-  expect(screen.getByText(/2 in feed/i)).toBeTruthy();
+  expect(screen.getByText(/2 unread/i)).toBeTruthy();
+  expect(screen.getByText(/3 in feed/i)).toBeTruthy();
+  expect(screen.queryByText('Trade, order, and market updates.')).toBeNull();
 });
 
 test('filters notifications by category', async () => {
@@ -78,10 +79,37 @@ test('filters notifications by category', async () => {
 
   await screen.findByText(/EURUSD trade booked/i);
 
-  await user.click(screen.getByLabelText(/notification category/i));
-  await user.click(screen.getByRole('option', { name: /order status/i }));
+  await user.click(screen.getByRole('tab', { name: /order status/i }));
 
   expect(screen.queryByText(/EURUSD trade booked/i)).toBeNull();
   expect(screen.getByText(/GBPUSD limit order working/i)).toBeTruthy();
   expect(screen.queryByText(/widest live spread/i)).toBeNull();
+});
+
+test('narrows the feed to unread items', async () => {
+  const user = userEvent.setup();
+  renderNotificationsScreen();
+
+  await screen.findByText(/EURUSD trade booked/i);
+
+  await user.click(screen.getByRole('switch', { name: /unread only/i }));
+
+  expect(screen.getByText(/EURUSD trade booked/i)).toBeTruthy();
+  expect(screen.getByText(/GBPUSD limit order working/i)).toBeTruthy();
+  expect(screen.queryByText(/widest live spread/i)).toBeNull();
+});
+
+test('groups the feed by day and offers a way back from an empty filter', async () => {
+  const user = userEvent.setup();
+  renderNotificationsScreen();
+
+  await screen.findByText(/EURUSD trade booked/i);
+
+  await user.click(screen.getByRole('tab', { name: /executions/i }));
+
+  expect(screen.getByText(/nothing to show/i)).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: /clear filters/i }));
+
+  expect(screen.getByText(/EURUSD trade booked/i)).toBeTruthy();
 });

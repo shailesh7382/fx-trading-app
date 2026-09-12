@@ -2,170 +2,370 @@ import { useMemo } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
-  LinearProgress,
   Paper,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Typography,
 } from '@mui/material';
-import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
-import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
+import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import { useNavigate } from 'react-router-dom';
 import { useWorkspaceContext } from '@/features/workspace/useWorkspaceData';
-import { formatNotional, formatRate, formatSignedDelta } from '@/shared/utils/formatters';
+import type { NormalizedRate } from '@/shared/types';
+import { formatRate, formatRelativeTime } from '@/shared/utils/formatters';
+import { DivergingBarChart, MagnitudeBarChart } from './Charts';
+import type { ChartDatum } from './Charts';
+import {
+  chartTokens,
+  formatPipValue,
+  formatQuantity,
+  formatSignedPips,
+  getMovePips,
+  monoFont,
+} from './presentation';
+
+const maxChartRows = 8;
+
+function StatTile({
+  label,
+  value,
+  caption,
+  accent,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  accent?: string;
+}) {
+  return (
+    <Paper
+      sx={{
+        px: { xs: 1.25, md: 2 },
+        py: { xs: 1, md: 1.5 },
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.35,
+        borderLeft: accent ? '3px solid' : undefined,
+        borderLeftColor: accent,
+      }}
+    >
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontSize: '0.7rem', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}
+      >
+        {label}
+      </Typography>
+      <Typography sx={{ fontSize: { xs: '1.15rem', md: '1.4rem' }, fontWeight: 650, lineHeight: 1.15 }}>
+        {value}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }} noWrap>
+        {caption}
+      </Typography>
+    </Paper>
+  );
+}
+
+function buildTooltip(rate: NormalizedRate) {
+  const movePips = getMovePips(rate);
+
+  return (
+    <Box sx={{ py: 0.25 }}>
+      <Typography variant="caption" sx={{ display: 'block', fontWeight: 700 }}>
+        {rate.ccyPair} · {rate.tenor}
+      </Typography>
+      <Typography variant="caption" sx={{ display: 'block' }}>
+        Bid {formatRate(rate.bid)} / Ask {formatRate(rate.ask)}
+      </Typography>
+      <Typography variant="caption" sx={{ display: 'block' }}>
+        Spread {formatPipValue(rate.spreadPips)} pips · Move {formatSignedPips(movePips)} pips
+      </Typography>
+      <Typography variant="caption" sx={{ display: 'block' }}>
+        Size {formatQuantity(rate.qty)} · {formatRelativeTime(rate.updatedAt)}
+      </Typography>
+    </Box>
+  );
+}
 
 function MarketAnalysis() {
   const navigate = useNavigate();
-  const { rates, isDemo } = useWorkspaceContext();
+  const { rates, isDemo, lastUpdated } = useWorkspaceContext();
 
   const analytics = useMemo(() => {
-    const sortedByMove = [...rates].sort((left, right) => Math.abs(right.bidDelta) - Math.abs(left.bidDelta));
-    const sortedBySpread = [...rates].sort((left, right) => right.spreadPips - left.spreadPips);
-    const deepestLiquidity = [...rates].sort((left, right) => right.qty - left.qty);
-    const avgSpread = rates.length
-      ? (rates.reduce((sum, rate) => sum + rate.spreadPips, 0) / rates.length).toFixed(1)
-      : '0.0';
+    if (!rates.length) {
+      return null;
+    }
+
+    const byMove = [...rates].sort((left, right) => Math.abs(getMovePips(right)) - Math.abs(getMovePips(left)));
+    const bySpread = [...rates].sort((left, right) => left.spreadPips - right.spreadPips);
+    const bySize = [...rates].sort((left, right) => right.qty - left.qty);
+    const averageSpread = rates.reduce((total, rate) => total + rate.spreadPips, 0) / rates.length;
+    const advancing = rates.filter((rate) => getMovePips(rate) > 0).length;
+    const declining = rates.filter((rate) => getMovePips(rate) < 0).length;
 
     return {
-      topMover: sortedByMove[0],
-      widestSpread: sortedBySpread[0],
-      deepestLiquidity: deepestLiquidity[0],
-      avgSpread,
-      movers: sortedByMove.slice(0, 5),
+      topMover: byMove[0],
+      tightest: bySpread[0],
+      widest: bySpread[bySpread.length - 1],
+      deepest: bySize[0],
+      averageSpread,
+      advancing,
+      declining,
+      movers: byMove.filter((rate) => getMovePips(rate) !== 0).slice(0, maxChartRows),
+      spreads: bySpread.slice(0, maxChartRows),
     };
   }, [rates]);
 
+  const moverData: ChartDatum[] = useMemo(
+    () =>
+      (analytics?.movers || []).map((rate) => ({
+        key: `${rate.ccyPair}-${rate.tenor}`,
+        label: `${rate.ccyPair} ${rate.tenor}`,
+        value: getMovePips(rate),
+        tooltip: buildTooltip(rate),
+      })),
+    [analytics]
+  );
+
+  const spreadData: ChartDatum[] = useMemo(
+    () =>
+      (analytics?.spreads || []).map((rate) => ({
+        key: `${rate.ccyPair}-${rate.tenor}`,
+        label: `${rate.ccyPair} ${rate.tenor}`,
+        value: rate.spreadPips,
+        tooltip: buildTooltip(rate),
+      })),
+    [analytics]
+  );
+
+  const tableRows = useMemo(
+    () =>
+      [...rates].sort(
+        (left, right) =>
+          left.ccyPair.localeCompare(right.ccyPair) || left.tenor.localeCompare(right.tenor)
+      ),
+    [rates]
+  );
+
+  if (!analytics) {
+    return (
+      <Paper sx={{ px: 3, py: { xs: 5, md: 8 }, textAlign: 'center' }}>
+        <InsightsRoundedIcon sx={{ fontSize: 34, color: 'text.disabled' }} />
+        <Typography variant="subtitle1" sx={{ mt: 1 }}>
+          No market data yet
+        </Typography>
+        <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
+          Analytics appear once the pricing service publishes its first quotes.
+        </Typography>
+      </Paper>
+    );
+  }
+
+  const topMoverPips = getMovePips(analytics.topMover);
+
   return (
-    <Stack spacing={3}>
-      <Paper sx={{ p: { xs: 2.25, md: 2.75 } }}>
-        <Stack spacing={1.5}>
-          <Box>
-            <Typography variant="h4">Market analysis</Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 780 }}>
-              Key moves, spreads, and liquidity.
-            </Typography>
-          </Box>
-          <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-            <Chip label={isDemo ? 'Demo analytics feed' : 'Live market analytics'} color={isDemo ? 'warning' : 'primary'} />
-            <Chip label={`${analytics.avgSpread} pips avg spread`} variant="outlined" />
-            <Chip label={`${rates.length} instruments monitored`} variant="outlined" />
-          </Stack>
+    <Stack spacing={{ xs: 1.5, md: 2 }}>
+      <Paper
+        sx={{
+          px: { xs: 1.5, md: 2 },
+          py: { xs: 1, md: 1.15 },
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1.5,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0, flexWrap: 'wrap', rowGap: 0.5 }}>
+          <Box
+            sx={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              bgcolor: isDemo ? '#B3801F' : chartTokens.up,
+              flexShrink: 0,
+            }}
+          />
+          <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+            {isDemo ? 'Demo feed' : 'Live analytics'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0 }}>
+            · {rates.length} instruments · {analytics.advancing} up / {analytics.declining} down · updated{' '}
+            {formatRelativeTime(lastUpdated)}
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <Button size="small" variant="outlined" color="inherit" onClick={() => navigate('/app/rates')}>
+            Review rates
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() =>
+              navigate('/app/booking', { state: { quote: analytics.topMover, direction: 'Buy' } })
+            }
+          >
+            Ticket top mover
+          </Button>
         </Stack>
       </Paper>
 
       <Box
         sx={{
           display: 'grid',
-          gap: 1.5,
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+          gap: { xs: 1, md: 1.5 },
+          gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
         }}
       >
-        {[
-          {
-            title: 'Top mover',
-            value: analytics.topMover?.ccyPair,
-            helper: analytics.topMover ? `${formatSignedDelta(analytics.topMover.bidDelta)} bid change` : 'No data',
-          },
-          {
-            title: 'Widest spread',
-            value: analytics.widestSpread?.ccyPair,
-            helper: analytics.widestSpread ? `${analytics.widestSpread.spreadPips} pips spread` : 'No data',
-          },
-          {
-            title: 'Deepest liquidity',
-            value: analytics.deepestLiquidity?.ccyPair,
-            helper: analytics.deepestLiquidity ? `${formatNotional(analytics.deepestLiquidity.qty)} available` : 'No data',
-          },
-        ].map((card) => (
-          <Card key={card.title}>
-            <CardContent>
-              <Typography color="text.secondary" variant="body2">
-                {card.title}
-              </Typography>
-              <Typography variant="h4" sx={{ mt: 0.8 }}>
-                {card.value || '—'}
-              </Typography>
-              <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                {card.helper}
-              </Typography>
-            </CardContent>
-          </Card>
-        ))}
+        <StatTile
+          label="Average spread"
+          value={`${formatPipValue(analytics.averageSpread)} pips`}
+          caption={`Across ${rates.length} quotes`}
+          accent={chartTokens.magnitude}
+        />
+        <StatTile
+          label="Tightest"
+          value={analytics.tightest.ccyPair}
+          caption={`${formatPipValue(analytics.tightest.spreadPips)} pips · ${analytics.tightest.tenor}`}
+          accent={chartTokens.up}
+        />
+        <StatTile
+          label="Widest"
+          value={analytics.widest.ccyPair}
+          caption={`${formatPipValue(analytics.widest.spreadPips)} pips · ${analytics.widest.tenor}`}
+          accent="#B3801F"
+        />
+        <StatTile
+          label="Largest move"
+          value={analytics.topMover.ccyPair}
+          caption={
+            topMoverPips
+              ? `${formatSignedPips(topMoverPips)} pips since last tick`
+              : 'Flat since last tick'
+          }
+          accent={topMoverPips >= 0 ? chartTokens.up : chartTokens.down}
+        />
       </Box>
 
       <Box
         sx={{
           display: 'grid',
-          gap: 2,
-          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.15fr) minmax(320px, 0.85fr)' },
+          gap: { xs: 1.5, md: 2 },
+          gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
           alignItems: 'start',
         }}
       >
-        <Paper sx={{ p: 2.25 }}>
-          <Typography variant="h6" sx={{ mb: 1.5 }}>
-            Movers board
-          </Typography>
-          <Stack spacing={1.25}>
-            {analytics.movers.map((rate) => {
-              const positive = rate.bidDelta >= 0;
-              const moveStrength = Math.min(100, Math.abs(rate.bidDelta) * (rate.bid > 20 ? 8000 : 800000));
-
-              return (
-                <Paper key={`${rate.ccyPair}-${rate.tenor}`} sx={{ p: 1.5, bgcolor: 'background.default' }}>
-                  <Stack spacing={1}>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box>
-                        <Typography variant="subtitle1">
-                          {rate.ccyPair} · {rate.tenor}
-                        </Typography>
-                        <Typography color="text.secondary" variant="body2">
-                          Mid {formatRate(rate.mid)} · Spread {rate.spreadPips} pips
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                        {positive ? <TrendingUpRoundedIcon color="success" /> : <TrendingDownRoundedIcon color="error" />}
-                        <Typography color={positive ? 'success.main' : 'error.main'}>{formatSignedDelta(rate.bidDelta)}</Typography>
-                      </Stack>
-                    </Stack>
-                    <LinearProgress variant="determinate" value={moveStrength} color={positive ? 'success' : 'error'} />
-                  </Stack>
-                </Paper>
-              );
-            })}
-          </Stack>
+        <Paper>
+          <DivergingBarChart
+            title="Session moves"
+            subtitle="Bid change since the previous tick, largest first"
+            unit="pips"
+            data={moverData}
+            emptyMessage="No instrument has moved since the last tick."
+          />
         </Paper>
 
-        <Stack spacing={2}>
-          <Paper sx={{ p: 2.25 }}>
-            <Typography variant="h6">Market summary</Typography>
-            <Stack spacing={1.25} sx={{ mt: 1.5 }}>
-              <Typography color="text.secondary">
-                Largest move: <strong>{analytics.topMover?.ccyPair || '—'}</strong>
-              </Typography>
-              <Typography color="text.secondary">
-                Widest spread: <strong>{analytics.widestSpread?.ccyPair || '—'}</strong>
-              </Typography>
-              <Typography color="text.secondary">
-                Most liquidity: <strong>{analytics.deepestLiquidity?.ccyPair || '—'}</strong>
-              </Typography>
-            </Stack>
-          </Paper>
-
-          <Paper sx={{ p: 2.25 }}>
-            <Typography variant="h6">Actions</Typography>
-            <Stack spacing={1.25} sx={{ mt: 1.5 }}>
-              <Button variant="contained" onClick={() => navigate('/app/rates')}>
-                Review rates
-              </Button>
-              <Button variant="outlined" onClick={() => navigate('/app/booking', { state: { quote: analytics.topMover, direction: 'Buy' } })}>
-                Open ticket for top mover
-              </Button>
-            </Stack>
-          </Paper>
-        </Stack>
+        <Paper>
+          <MagnitudeBarChart
+            title="Spread by instrument"
+            subtitle="Bid/ask spread, tightest first"
+            unit="pips"
+            data={spreadData}
+            emptyMessage="No spreads to compare yet."
+          />
+        </Paper>
       </Box>
+
+      <Paper sx={{ overflow: 'hidden' }}>
+        <Box sx={{ px: { xs: 1.5, md: 2 }, pt: { xs: 1.5, md: 2 }, pb: 1 }}>
+          <Typography component="h3" variant="subtitle2" sx={{ fontWeight: 700 }}>
+            All instruments
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Every quote behind the charts above
+          </Typography>
+        </Box>
+        <TableContainer>
+          <Table size="small" sx={{ minWidth: 720 }}>
+            <TableHead>
+              <TableRow>
+                {['Instrument', 'Bid', 'Ask', 'Mid', 'Spread', 'Move', 'Size', 'Updated'].map((heading, index) => (
+                  <TableCell
+                    key={heading}
+                    align={index > 0 && index < 7 ? 'right' : 'left'}
+                    sx={{
+                      bgcolor: 'background.default',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      color: 'text.secondary',
+                      whiteSpace: 'nowrap',
+                      py: 1,
+                    }}
+                  >
+                    {heading}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {tableRows.map((rate) => {
+                const movePips = getMovePips(rate);
+
+                return (
+                  <TableRow key={`${rate.ccyPair}-${rate.tenor}`} hover sx={{ '& > td': { borderColor: 'divider' } }}>
+                    <TableCell sx={{ py: 0.9 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 650 }}>
+                        {rate.ccyPair}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {rate.tenor} · {rate.source}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.9, fontVariantNumeric: 'tabular-nums', fontFamily: monoFont }}>
+                      {formatRate(rate.bid)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.9, fontVariantNumeric: 'tabular-nums', fontFamily: monoFont }}>
+                      {formatRate(rate.ask)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.9, fontVariantNumeric: 'tabular-nums', fontFamily: monoFont }}>
+                      {formatRate(rate.mid)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.9, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatPipValue(rate.spreadPips)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.9, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                      <Box
+                        component="span"
+                        aria-hidden
+                        sx={{
+                          mr: 0.5,
+                          fontSize: '0.6rem',
+                          color: movePips >= 0 ? chartTokens.up : chartTokens.down,
+                        }}
+                      >
+                        {movePips === 0 ? '·' : movePips > 0 ? '▲' : '▼'}
+                      </Box>
+                      {formatSignedPips(movePips)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.9, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatQuantity(rate.qty)}
+                    </TableCell>
+                    <TableCell sx={{ py: 0.9, whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">{formatRelativeTime(rate.updatedAt)}</Typography>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
     </Stack>
   );
 }
