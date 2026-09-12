@@ -76,9 +76,6 @@ interface BookingLaunchState {
 const productTypeOptions: Array<{ value: ProductType; label: string }> = [
   { value: 'SPOT_FWD', label: 'FX Spot/Fwd' },
 ];
-const productTypeLabels: Record<string, string> = Object.fromEntries(
-  productTypeOptions.map((option) => [option.value, option.label])
-);
 const fixingSourceOptions = ['WM/Reuters', 'CME reference', 'Local central bank'];
 const bullionSettlementOptions = ['Unallocated', 'Allocated', 'Loco London'];
 const bullionMetalPairs: Record<MetalType, string> = {
@@ -613,15 +610,12 @@ function TradeBooking() {
   const confirmationDetails: Array<[string, string | undefined]> = confirmation
     ? [
         ['Trade ID', confirmation.id],
-        ['Product', productTypeLabels[confirmation.productType || ''] || 'FX Spot/Fwd'],
         ['Instrument', confirmation.ccyPair],
         ['Direction', `${confirmation.direction} ${confirmation.dealtCurrency}`],
         ['Tenor', confirmation.tenor],
         ['Quantity', formatNotional(confirmation.qty)],
         ['Rate', formatRate(confirmation.price)],
-        ['Cover price', formatRate(confirmation.coverPrice)],
         ['Swap points', String(confirmation.swapPoints ?? 0)],
-        ['Quote ID', confirmation.quoteId],
         ['Buy settlement', `${formatNotional(confirmation.buyQuantity || 0)} ${confirmation.buyCurrency || ''}`],
         ['Sell settlement', `${formatNotional(confirmation.sellQuantity || 0)} ${confirmation.sellCurrency || ''}`],
         ['All-in notional', formatCurrency(Number(confirmation.qty || 0) * Number(confirmation.price || 0))],
@@ -686,18 +680,12 @@ function TradeBooking() {
             {message ? <Alert severity={severity}>{message}</Alert> : null}
 
             <Box>
-              <Typography variant="h5">FX trade booking</Typography>
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Product</Typography>
               <ToggleButtonGroup
                 exclusive
                 value={formData.productType}
                 onChange={handleProductTypeChange}
                 aria-label="fx product type"
                 sx={{
-                  mt: 1,
                   width: '100%',
                   flexWrap: 'wrap',
                   gap: 0.75,
@@ -999,10 +987,6 @@ function TradeBooking() {
           <Paper sx={{ ...bookingPaperSx, p: 2 }}>
             <Typography variant="h6">Quote summary</Typography>
             <Stack spacing={1} sx={{ mt: 1.25 }}>
-              <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                <Typography color="text.secondary">Product</Typography>
-                <Typography>{productTypeLabels[formData.productType] || 'FX Spot/Fwd'}</Typography>
-              </Stack>
               <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                 <Typography color="text.secondary">Instrument</Typography>
                 <Typography>{formData.ccyPair || 'Select a pair'}</Typography>

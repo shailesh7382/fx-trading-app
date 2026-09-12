@@ -7,6 +7,7 @@ import com.example.fx.backend.pricing.model.LimitOrderStatus;
 import com.example.fx.backend.pricing.repository.LimitOrderRepository;
 import com.example.fx.backend.simulator.SimulatorClientProperties;
 import com.example.fx.backend.simulator.SimulatorGateway;
+import com.example.fx.backend.support.AlphanumericIdGenerator;
 import com.example.fx.simulator.api.model.CallbackStatus;
 import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
 import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
@@ -38,13 +39,15 @@ class LimitOrderServiceTest {
     @Mock LimitOrderRepository repository;
     @Mock SimulatorGateway simulator;
     @Mock TradeService trades;
+    @Mock AlphanumericIdGenerator idGenerator;
     private LimitOrderService service;
     private final OffsetDateTime now = OffsetDateTime.parse("2026-09-08T08:00:00Z");
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-08T08:00:00Z"), ZoneOffset.UTC);
-        service = new LimitOrderService(repository, simulator, properties(), trades, clock);
+        service = new LimitOrderService(repository, simulator, properties(), trades, clock, idGenerator);
+        lenient().when(idGenerator.generate()).thenReturn("A1b2C3d4E5f6");
         lenient().when(repository.save(any(LimitOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -67,6 +70,7 @@ class LimitOrderServiceTest {
 
         LimitOrder placed = service.submitLimitOrder(input);
         assertThat(placed.getStatus()).isEqualTo(LimitOrderStatus.ACTIVE);
+        assertThat(placed.getId()).isEqualTo("A1b2C3d4E5f6");
         assertThat(placed.getOriginalRequestId()).isEqualTo("place-request");
         assertThat(placed.getCallbackStatus()).isEqualTo("NOT_REQUIRED");
 
@@ -88,6 +92,29 @@ class LimitOrderServiceTest {
                 .isEqualTo(com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_TIME);
         assertThat(captured.getValue().getExpiresAt()).isAfter(now);
         assertThat(amended.getQty()).isEqualTo(2_000_000);
+    }
+
+    @Test
+    void retriesWhenTheGeneratedOrderIdAlreadyExists() {
+        when(idGenerator.generate()).thenReturn("COLLISION001", "UNIQUEID0001");
+        when(repository.existsById("COLLISION001")).thenReturn(true);
+        when(simulator.placeRestingOrder(any())).thenAnswer(invocation -> {
+            com.example.fx.simulator.api.model.RestingOrderRequest input = invocation.getArgument(0);
+            return remote(input.getOrderId(), input.getRequestId(), input.getQuantity(), input.getLimitPrice());
+        });
+        LimitOrderRequest input = new LimitOrderRequest();
+        input.setCcyPair("EURUSD");
+        input.setTenor("SP");
+        input.setQty(1_000_000);
+        input.setDirection("Buy");
+        input.setDealtCurrency("EUR");
+        input.setLimitPrice(1.09);
+
+        LimitOrder placed = service.submitLimitOrder(input);
+
+        assertThat(placed.getId()).isEqualTo("UNIQUEID0001");
+        verify(repository).existsById("COLLISION001");
+        verify(repository).existsById("UNIQUEID0001");
     }
 
     @Test
@@ -156,6 +183,22 @@ class LimitOrderServiceTest {
         assertThat(order.getCallbackAttempts()).isEqualTo(1);
         verify(trades).reconcileBooking(eq(tradeId), anyString(), eq("WEB"), eq("C"),
                 eq("0000123456"), any(), eq("LIMIT"), eq("ORD-PENDING"));
+    }
+
+    @Test
+    void skipsReconciliationForOrdersWithIncompleteRequestContext() {
+        LimitOrder order = new LimitOrder();
+        order.setId("ORD-INCOMPLETE");
+        order.setStatus(LimitOrderStatus.ACTIVE);
+        when(repository.findByStatusOrderBySubmittedAtDesc(LimitOrderStatus.ACTIVE)).thenReturn(List.of(order));
+        when(repository.findByCallbackStatusOrderBySubmittedAtDesc(CallbackStatus.PENDING.getValue()))
+                .thenReturn(List.of());
+        when(repository.findAllByOrderBySubmittedAtDesc()).thenReturn(List.of(order));
+
+        List<LimitOrder> result = service.getOrders("ALL", null);
+
+        assertThat(result).containsExactly(order);
+        verifyNoInteractions(simulator);
     }
 
     private com.example.fx.simulator.api.model.RestingOrder remote(

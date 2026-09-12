@@ -38,11 +38,15 @@ public class SimulatorExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(SimulatorApiException.class)
     ResponseEntity<Object> handleSimulatorException(SimulatorApiException exception) {
+        LOG.warn("Simulator request rejected status={} errorCode={} detail={}",
+                exception.getStatus().value(), exception.getErrorCode(), exception.getMessage());
         return problem(exception.getStatus(), exception.getErrorCode(), exception.getTitle(), exception.getMessage(), new HttpHeaders());
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     ResponseEntity<Object> handleConstraintViolation(ConstraintViolationException exception) {
+        LOG.debug("Simulator request failed constraint validation violations={}",
+                exception.getConstraintViolations().size());
         return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request",
                 "One or more request values violate the API contract.", new HttpHeaders());
     }
@@ -54,6 +58,8 @@ public class SimulatorExceptionHandler extends ResponseEntityExceptionHandler {
                 ? invalid.getBindingResult().getFieldErrors().stream()
                     .map(error -> error.getField() + " " + error.getDefaultMessage()).distinct().collect(Collectors.joining("; "))
                 : "The request could not be processed.";
+        LOG.debug("Simulator request could not be processed status={} exceptionType={} detail={}",
+                status.value(), exception.getClass().getSimpleName(), detail);
         return problem(status, "INVALID_REQUEST", "Invalid request", detail, headers);
     }
 

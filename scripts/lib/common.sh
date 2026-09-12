@@ -108,7 +108,7 @@ clear_service_state() {
 }
 
 port_listener_line() {
-  lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print $1 " pid=" $2 " user=" $3 " endpoint=" $9}'
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 " pid=" $2 " user=" $3 " endpoint=" $9}' | paste -sd'; ' -
 }
 
 is_port_listening() {
@@ -162,6 +162,36 @@ latest_run_dir() {
 
 listening_pids() {
   lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | tr '\n' ' '
+}
+
+# macOS `ps -o comm=` prints the executable's FULL PATH (e.g.
+# /Users/me/.sdkman/.../bin/java), while Linux prints just the basename.
+# Always reduce to the basename so name comparisons work on both.
+process_name() {
+  local name
+  name="$(ps -p "$1" -o comm= 2>/dev/null | head -n 1)"
+  name="${name%% *}"
+  name="${name##*/}"
+  printf '%s' "$name"
+}
+
+is_manageable_listener() {
+  case "$(process_name "$1")" in
+    java|node|npm|npx|vite|esbuild) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+wait_for_port_free() {
+  local port="$1"
+  local attempts="${2:-10}"
+  local i=0
+  while (( i < attempts )); do
+    is_port_listening "$port" || return 0
+    sleep 1
+    i=$(( i + 1 ))
+  done
+  ! is_port_listening "$port"
 }
 
 service_all_ports() {
@@ -363,7 +393,6 @@ stop_service() {
   local pid
   local port
   local listener_pid
-  local listener_name
   local waited=0
   local had_pid_file=false
 
@@ -402,24 +431,26 @@ stop_service() {
     if is_port_listening "$port"; then
       log_msg INFO "Port $port is still active after stopping $(service_display_name "$service"). Attempting to stop listener(s): $(port_listener_line "$port")"
       for listener_pid in $(listening_pids "$port"); do
-        listener_name="$(ps -p "$listener_pid" -o comm= 2>/dev/null | awk '{print $1}')"
-        if [[ "$listener_name" == "java" || "$listener_name" == "node" || "$listener_name" == "npm" ]]; then
+        if is_manageable_listener "$listener_pid"; then
           kill "$listener_pid" >/dev/null 2>&1 || true
+        else
+          log_msg INFO "Leaving PID $listener_pid ($(process_name "$listener_pid")) on port $port alone; not a managed process type."
         fi
       done
 
-      sleep 2
+      wait_for_port_free "$port" 10 || true
 
       if is_port_listening "$port"; then
         log_msg INFO "Port $port is still active after follow-up stop attempt. Escalating to SIGKILL for: $(port_listener_line "$port")"
         for listener_pid in $(listening_pids "$port"); do
-          listener_name="$(ps -p "$listener_pid" -o comm= 2>/dev/null | awk '{print $1}')"
-          if [[ "$listener_name" == "java" || "$listener_name" == "node" || "$listener_name" == "npm" ]]; then
+          if is_manageable_listener "$listener_pid"; then
             kill -9 "$listener_pid" >/dev/null 2>&1 || true
+          else
+            log_msg INFO "Leaving PID $listener_pid ($(process_name "$listener_pid")) on port $port alone; not a managed process type."
           fi
         done
 
-        sleep 1
+        wait_for_port_free "$port" 5 || true
 
         if is_port_listening "$port"; then
           log_msg INFO "Port $port remains active even after SIGKILL attempt. Current listener: $(port_listener_line "$port")"

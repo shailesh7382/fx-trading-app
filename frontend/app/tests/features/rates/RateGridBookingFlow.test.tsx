@@ -22,7 +22,11 @@ vi.mock('@/shared/api/client', () => ({
 
 import { fetchFxGrid, fetchLookup } from '@/shared/api/client';
 
-const testRate = createRate();
+const testRate = createRate({
+  quoteId: 'quote-private-123',
+  bidCoverPrice: 9.87654,
+  askCoverPrice: 9.87655,
+});
 
 function renderBookingFlow() {
   const workspaceData = createWorkspaceContext({
@@ -43,6 +47,8 @@ function renderBookingFlow() {
     bookingMode: 'local',
     trader: 'demo.trader',
     bookedAt: '2026-05-26T08:01:00.000Z',
+    quoteId: 'quote-private-123',
+    coverPrice: 9.87655,
   };
 
   const userContextValue = createUserContext({
@@ -82,13 +88,12 @@ test.each(['Buy', 'Sell'])(
     await user.click(screen.getByRole('button', { name: /toggle dealt currency to usd/i }));
     const expectedValueDate = calculateSettlementDate(new Date().toISOString(), testRate.tenor);
 
-    expect(screen.getByText(expectedValueDate)).toBeTruthy();
-
     await user.click(screen.getByRole('button', { name: direction }));
 
-    expect(await screen.findByRole('heading', { name: /fx trade booking/i })).toBeTruthy();
-    expect(screen.getByRole('combobox', { name: /direction/i }).textContent).toContain(direction);
+    expect((await screen.findByRole('combobox', { name: /direction/i })).textContent).toContain(direction);
     expect(screen.getByRole('combobox', { name: /dealt currency/i }).textContent).toContain('USD');
+    expect(screen.queryByText('FX trade booking')).toBeNull();
+    expect(screen.queryByText('Product')).toBeNull();
     expect((screen.getByLabelText(/settlement date/i) as HTMLInputElement).value).toBe(
       expectedValueDate
     );
@@ -97,6 +102,18 @@ test.each(['Buy', 'Sell'])(
     expect(fetchLookup).toHaveBeenCalledWith('/sales', fallbackSales);
   }
 );
+
+test('does not expose internal pricing details, date chips, or points on spot rate cards', async () => {
+  renderBookingFlow();
+
+  await screen.findByRole('button', { name: 'Buy' });
+
+  expect(screen.queryByText(/quote-private-123/i)).toBeNull();
+  expect(screen.queryByText(/cover 9\.8765/i)).toBeNull();
+  expect(screen.queryByText(/^Spot /i)).toBeNull();
+  expect(screen.queryByText(/^Value /i)).toBeNull();
+  expect(screen.queryByText(/^Pts /i)).toBeNull();
+});
 
 test('passes an edited rate-card quantity into booking', async () => {
   const user = userEvent.setup();
@@ -111,8 +128,7 @@ test('passes an edited rate-card quantity into booking', async () => {
 
   await user.click(screen.getByRole('button', { name: 'Buy' }));
 
-  expect(await screen.findByRole('heading', { name: /fx trade booking/i })).toBeTruthy();
-  expect((screen.getByLabelText(/quantity/i) as HTMLInputElement).valueAsNumber).toBe(1000000);
+  expect((await screen.findByLabelText(/quantity/i) as HTMLInputElement).valueAsNumber).toBe(1000000);
 });
 
 test('lands on a bookable ticket straight from a rate-card click', async () => {
@@ -121,7 +137,6 @@ test('lands on a bookable ticket straight from a rate-card click', async () => {
 
   await user.click(await screen.findByRole('button', { name: 'Buy' }));
 
-  expect(await screen.findByRole('heading', { name: /fx trade booking/i })).toBeTruthy();
   const rmCombobox = await screen.findByRole('combobox', { name: /relationship manager/i });
   expect(rmCombobox.textContent).toContain(fallbackRelationshipManagers[0].name);
   expect(screen.getByRole('combobox', { name: /sales/i }).textContent).toContain(
@@ -143,12 +158,20 @@ test('flips the ticket to a confirmation, then hands off to the blotter', async 
   expect(await screen.findByRole('heading', { name: /trade confirmation/i })).toBeTruthy();
   expect(screen.getByText('Trade TRD-1 booked.')).toBeTruthy();
   expect(screen.getByText('Trade ID')).toBeTruthy();
+  expect(screen.queryByText('Quote ID')).toBeNull();
+  expect(screen.queryByText('Cover price')).toBeNull();
+  expect(screen.queryByText('quote-private-123')).toBeNull();
   expect(screen.queryByRole('button', { name: /book trade/i })).toBeNull();
 
   await user.click(screen.getByRole('button', { name: /view in blotter/i }));
 
-  expect(await screen.findByRole('heading', { name: /trade blotter/i })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: /export blotter/i })).toBeTruthy();
   expect(screen.getByText('Just booked')).toBeTruthy();
+  expect(screen.queryByText('Trade blotter')).toBeNull();
+  expect(screen.queryByText('Booked trades and execution history.')).toBeNull();
+  expect(screen.queryByText('Quote ID')).toBeNull();
+  expect(screen.queryByText(/Cover \/ swap/i)).toBeNull();
+  expect(screen.queryByText('quote-private-123')).toBeNull();
 });
 
 test('flips back to a fresh ticket when booking another', async () => {

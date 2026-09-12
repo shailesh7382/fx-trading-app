@@ -14,10 +14,14 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class FxPriceService {
+    private static final Logger LOG = LoggerFactory.getLogger(FxPriceService.class);
+
     private final SimulatorGateway simulator;
     private final SimulatorClientProperties properties;
     private final Clock clock;
@@ -34,8 +38,10 @@ public class FxPriceService {
         Instant now = clock.instant();
         if (!allPricesSnapshot.isEmpty()
                 && Duration.between(allPricesSnapshotAt, now).compareTo(Duration.ofSeconds(1)) < 0) {
+            LOG.debug("Serving all-prices snapshot from cache quoteCount={}", allPricesSnapshot.size());
             return allPricesSnapshot;
         }
+        LOG.debug("Refreshing all-prices snapshot instrumentCount={}", properties.instruments().size());
         allPricesSnapshot = getGridPrices("", "ALL", "pair", properties.instruments().size() * 6);
         allPricesSnapshotAt = now;
         return allPricesSnapshot;
@@ -47,14 +53,18 @@ public class FxPriceService {
                 ? List.of("SP", "1W", "1M", "3M", "6M", "1Y")
                 : List.of(tenor == null || tenor.isBlank() ? "SP" : tenor);
         int safeLimit = Math.max(1, Math.min(limit, properties.instruments().size() * 6));
+        LOG.debug("Requesting price grid search={} tenors={} sortBy={} limit={}",
+                query, tenors, sortBy, safeLimit);
 
-        return properties.instruments().stream()
+        List<FxPriceDTO> prices = properties.instruments().stream()
                 .map(String::toUpperCase)
                 .filter(pair -> query.isEmpty() || pair.contains(query))
                 .flatMap(pair -> tenors.stream().map(selectedTenor -> requestTwoWay(pair, selectedTenor)))
                 .sorted(comparator(sortBy))
                 .limit(safeLimit)
                 .toList();
+        LOG.debug("Price grid ready quoteCount={}", prices.size());
+        return prices;
     }
 
     private FxPriceDTO requestTwoWay(String currencyPair, String tenor) {
@@ -72,6 +82,8 @@ public class FxPriceService {
         if (!(quote instanceof TwoWayPriceQuote twoWay)) {
             throw new IllegalStateException("Simulator returned a non-two-way quote for a two-way request.");
         }
+        LOG.debug("Two-way quote received quoteId={} pair={} tenor={} expiresAt={}",
+                twoWay.getQuoteId(), currencyPair, tenor, twoWay.getExpiresAt());
         return new FxPriceDTO(twoWay);
     }
 

@@ -48,6 +48,9 @@ public class RestingOrderCallbackDispatcher {
     }
 
     private void deliver(CallbackDelivery delivery, RestingOrder order) {
+        int attempt = delivery.attempts() + 1;
+        LOG.debug("Delivering resting-order callback eventId={} orderId={} attempt={}",
+                delivery.eventId(), order.orderId(), attempt);
         try {
             ResponseEntity<Void> response = client.post()
                     .uri(order.command().callbackUrl())
@@ -59,11 +62,15 @@ public class RestingOrderCallbackDispatcher {
                     .toBodilessEntity();
             if (response.getStatusCode().is2xxSuccessful()) {
                 store.recordDelivered(delivery);
+                LOG.info("Resting-order callback delivered eventId={} orderId={} attempt={} status={}",
+                        delivery.eventId(), order.orderId(), attempt, response.getStatusCode());
                 return;
             }
-            LOG.warn("Callback for resting order {} refused with {}", order.orderId(), response.getStatusCode());
+            LOG.warn("Resting-order callback refused eventId={} orderId={} attempt={} status={}",
+                    delivery.eventId(), order.orderId(), attempt, response.getStatusCode());
         } catch (RestClientException | JsonProcessingException exception) {
-            LOG.warn("Callback for resting order {} could not be delivered", order.orderId(), exception);
+            LOG.warn("Resting-order callback failed eventId={} orderId={} attempt={} message={}",
+                    delivery.eventId(), order.orderId(), attempt, exception.getMessage(), exception);
         }
         store.recordFailure(delivery);
     }

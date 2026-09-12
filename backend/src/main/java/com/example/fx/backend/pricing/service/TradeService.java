@@ -16,6 +16,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class TradeService {
+    private static final Logger LOG = LoggerFactory.getLogger(TradeService.class);
+
     private final TradeRepository tradeRepository;
     private final SimulatorGateway simulator;
     private final SimulatorClientProperties properties;
@@ -35,7 +39,9 @@ public class TradeService {
     }
 
     public List<Trade> getTrades() {
-        return tradeRepository.findAllByOrderByBookedAtDesc();
+        List<Trade> trades = tradeRepository.findAllByOrderByBookedAtDesc();
+        LOG.debug("Loaded trades count={}", trades.size());
+        return trades;
     }
 
     @Transactional
@@ -48,6 +54,8 @@ public class TradeService {
         String pair = draft.getCcyPair().trim().toUpperCase(Locale.ROOT);
         String quantityCurrency = draft.getDealtCurrency().trim().toUpperCase(Locale.ROOT);
         Side side = SimulatorContractMapper.toSide(draft.getDirection());
+        LOG.info("Booking market trade requestId={} pair={} side={} quantity={} {} tenor={}",
+                requestId, pair, side, draft.getQty(), quantityCurrency, draft.getTenor());
 
         OneWayPriceRequest pricingRequest = new OneWayPriceRequest()
                 .requestId(requestId)
@@ -75,7 +83,10 @@ public class TradeService {
                 .quoteId(quote.getQuoteId())
                 .side(side);
         String idempotencyKey = textOr(draft.getIdempotencyKey(), requestId);
-        return record(simulator.bookTrade(idempotencyKey, bookingRequest), draft, "MARKET", null);
+        Trade trade = record(simulator.bookTrade(idempotencyKey, bookingRequest), draft, "MARKET", null);
+        LOG.info("Market trade booked tradeId={} quoteId={} price={}",
+                trade.getId(), trade.getQuoteId(), trade.getPrice());
+        return trade;
     }
 
     @Transactional
@@ -83,8 +94,11 @@ public class TradeService {
                                   String customerId, Trade metadata, String executionType, String orderId) {
         Trade existing = tradeRepository.findById(tradeId.toString()).orElse(null);
         if (existing != null) {
+            LOG.debug("Trade reconciliation skipped because trade already exists tradeId={}", tradeId);
             return existing;
         }
+        LOG.info("Reconciling simulator trade tradeId={} executionType={} orderId={}",
+                tradeId, executionType, orderId);
         BookedTrade booked = simulator.getBooking(tradeId, requestId, channel, segment, customerId);
         return record(booked, metadata, executionType, orderId);
     }
@@ -125,7 +139,10 @@ public class TradeService {
         trade.setLimitOrderId(orderId);
         trade.setMarketSource("SIMULATOR");
         copyDeskMetadata(metadata, trade);
-        return tradeRepository.save(trade);
+        Trade saved = tradeRepository.save(trade);
+        LOG.debug("Trade persisted tradeId={} status={} executionType={} orderId={}",
+                saved.getId(), saved.getStatus(), saved.getExecutionType(), saved.getLimitOrderId());
+        return saved;
     }
 
     private void copyDeskMetadata(Trade source, Trade target) {

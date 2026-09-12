@@ -16,7 +16,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { useLocation } from 'react-router-dom';
 import { useUser } from '@/features/auth/UserProvider';
 import { downloadCsv } from '@/shared/utils/csv';
-import { formatCurrency, formatDateTime, formatNotional, formatRate } from '@/shared/utils/formatters';
+import { formatCurrency, formatDateTime, formatNotional } from '@/shared/utils/formatters';
 
 const productTypeLabels: Record<string, string> = {
   SPOT_FWD: 'FX Spot/Fwd',
@@ -79,19 +79,7 @@ function TradeBlotter() {
 
       <Paper sx={{ p: { xs: 2.25, md: 2.75 } }}>
         <Stack spacing={2}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ justifyContent: 'space-between' }}>
-            <Box>
-              <Typography variant="h4">Trade blotter</Typography>
-              <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                Booked trades and execution history.
-              </Typography>
-            </Box>
-            <Button variant="contained" startIcon={<DownloadRoundedIcon />} onClick={exportBlotter}>
-              Export blotter
-            </Button>
-          </Stack>
-
-          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: '1.4fr 0.8fr' } }}>
+          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: '1.4fr 0.8fr auto' } }}>
             <TextField
               label="Search trades"
               value={search}
@@ -112,6 +100,14 @@ function TradeBlotter() {
               <MenuItem value="live">Live capture</MenuItem>
               <MenuItem value="local">Local fallback</MenuItem>
             </TextField>
+            <Button
+              variant="contained"
+              startIcon={<DownloadRoundedIcon />}
+              onClick={exportBlotter}
+              sx={{ minWidth: 170, whiteSpace: 'nowrap' }}
+            >
+              Export blotter
+            </Button>
           </Box>
 
         </Stack>
@@ -178,18 +174,14 @@ function TradeBlotter() {
                     <Typography>{trade.price}</Typography>
                   </Stack>
                   <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                    <Typography color="text.secondary">Cover / swap</Typography>
-                    <Typography>{formatRate(trade.coverPrice)} / {trade.swapPoints ?? 0}</Typography>
+                    <Typography color="text.secondary">Swap points</Typography>
+                    <Typography>{trade.swapPoints ?? 0}</Typography>
                   </Stack>
                   <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 2 }}>
                     <Typography color="text.secondary">Settlement</Typography>
                     <Typography sx={{ textAlign: 'right' }}>
                       Buy {formatNotional(trade.buyQuantity || 0)} {trade.buyCurrency} · Sell {formatNotional(trade.sellQuantity || 0)} {trade.sellCurrency}
                     </Typography>
-                  </Stack>
-                  <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 2 }}>
-                    <Typography color="text.secondary">Quote ID</Typography>
-                    <Typography sx={{ fontFamily: 'monospace', textAlign: 'right' }}>{trade.quoteId || '—'}</Typography>
                   </Stack>
                   <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Notional</Typography>

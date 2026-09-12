@@ -151,8 +151,8 @@ test('amends an active limit order from the current orders panel', async () => {
   await screen.findByText(/LO-240526-001/i);
 
   await user.click(screen.getByRole('button', { name: /amend/i }));
-  await user.clear(screen.getByLabelText(/quantity/i));
-  await user.type(screen.getByLabelText(/quantity/i), '2000000');
+  await user.clear(screen.getByLabelText(/^quantity$/i));
+  await user.type(screen.getByLabelText(/^quantity$/i), '2000000');
   await user.clear(screen.getByLabelText(/comments/i));
   await user.type(screen.getByLabelText(/comments/i), 'Amended from test');
   await user.clear(screen.getByLabelText(/^limit price$/i));
