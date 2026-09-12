@@ -7,8 +7,8 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Random;
 
-import com.example.fx.simulator.api.model.Side;
-import com.example.fx.simulator.api.model.Tenor;
+import com.example.fx.tradingsystems.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Tenor;
 import com.example.fx.simulator.config.SettlementProperties;
 import com.example.fx.simulator.config.SimulatorStateProperties;
 import com.example.fx.simulator.domain.TradingModels.PricingCommand;

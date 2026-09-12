@@ -36,7 +36,7 @@ class NotificationServiceTest {
     }
 
     @Test
-    void buildsNotificationsFromSimulatorTradesOrdersAndQuotes() {
+    void buildsNotificationsFromTradingSystemTradesOrdersAndQuotes() {
         Trade trade = new Trade();
         trade.setId("trade-1");
         trade.setCcyPair("EURUSD");
@@ -61,7 +61,7 @@ class NotificationServiceTest {
         when(price.getBid()).thenReturn(new BigDecimal("156.281"));
         when(price.getAsk()).thenReturn(new BigDecimal("156.309"));
         when(price.getQty()).thenReturn(new BigDecimal("5000000"));
-        when(price.getSource()).thenReturn("SIMULATOR");
+        when(price.getSource()).thenReturn("TRADING_SYSTEM");
         when(price.getUpdatedAt()).thenReturn(OffsetDateTime.parse("2026-05-26T07:59:00Z"));
         when(trades.getTrades()).thenReturn(List.of(trade));
         when(orders.getOrders("ALL", null)).thenReturn(List.of(order));

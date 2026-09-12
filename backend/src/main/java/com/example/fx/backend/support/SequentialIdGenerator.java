@@ -22,11 +22,11 @@ public class SequentialIdGenerator {
     private static final int SYMBOL_BITS = 5;
     private static final int SYMBOL_MASK = 31;
     private static final String RESERVE =
-            "UPDATE id_block_allocation SET next_value = next_value + ? WHERE sequence_name = ?";
+            "UPDATE BKND_ID_BLOCK_ALLOCATION SET next_value = next_value + ? WHERE sequence_name = ?";
     private static final String READ =
-            "SELECT next_value FROM id_block_allocation WHERE sequence_name = ?";
+            "SELECT next_value FROM BKND_ID_BLOCK_ALLOCATION WHERE sequence_name = ?";
     private static final String SEED =
-            "INSERT INTO id_block_allocation (sequence_name, next_value) VALUES (?, 0)";
+            "INSERT INTO BKND_ID_BLOCK_ALLOCATION (sequence_name, next_value) VALUES (?, 0)";
 
     public static final int ID_LENGTH = COUNTER_SYMBOLS + 1;
     public static final long CAPACITY = 1L << (SYMBOL_BITS * COUNTER_SYMBOLS);

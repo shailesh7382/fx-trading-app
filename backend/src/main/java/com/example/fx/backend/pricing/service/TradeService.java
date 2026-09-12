@@ -2,16 +2,16 @@ package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.model.Trade;
 import com.example.fx.backend.pricing.repository.TradeRepository;
-import com.example.fx.backend.simulator.SimulatorClientProperties;
-import com.example.fx.backend.simulator.SimulatorContractMapper;
-import com.example.fx.backend.simulator.SimulatorGateway;
 import com.example.fx.backend.support.SequentialIdGenerator;
-import com.example.fx.simulator.api.model.BookedTrade;
-import com.example.fx.simulator.api.model.BookingRequest;
-import com.example.fx.simulator.api.model.OneWayPriceQuote;
-import com.example.fx.simulator.api.model.OneWayPriceRequest;
-import com.example.fx.simulator.api.model.PriceQuote;
-import com.example.fx.simulator.api.model.Side;
+import com.example.fx.backend.tradingsystem.TradingSystemClientProperties;
+import com.example.fx.backend.tradingsystem.TradingSystemContractMapper;
+import com.example.fx.backend.tradingsystem.TradingSystemGateway;
+import com.example.fx.tradingsystems.api.model.BookedTrade;
+import com.example.fx.tradingsystems.api.model.BookingRequest;
+import com.example.fx.tradingsystems.api.model.OneWayPriceQuote;
+import com.example.fx.tradingsystems.api.model.OneWayPriceRequest;
+import com.example.fx.tradingsystems.api.model.PriceQuote;
+import com.example.fx.tradingsystems.api.model.Side;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,14 +29,14 @@ public class TradeService {
     private static final Logger LOG = LoggerFactory.getLogger(TradeService.class);
 
     private final TradeRepository tradeRepository;
-    private final SimulatorGateway simulator;
-    private final SimulatorClientProperties properties;
+    private final TradingSystemGateway tradingSystem;
+    private final TradingSystemClientProperties properties;
     private final SequentialIdGenerator idGenerator;
 
-    public TradeService(TradeRepository tradeRepository, SimulatorGateway simulator,
-                        SimulatorClientProperties properties, SequentialIdGenerator idGenerator) {
+    public TradeService(TradeRepository tradeRepository, TradingSystemGateway tradingSystem,
+                        TradingSystemClientProperties properties, SequentialIdGenerator idGenerator) {
         this.tradeRepository = tradeRepository;
-        this.simulator = simulator;
+        this.tradingSystem = tradingSystem;
         this.properties = properties;
         this.idGenerator = idGenerator;
     }
@@ -56,7 +56,7 @@ public class TradeService {
         String customerId = textOr(draft.getCustomerId(), properties.customerId());
         String pair = draft.getCcyPair().trim().toUpperCase(Locale.ROOT);
         String quantityCurrency = draft.getDealtCurrency().trim().toUpperCase(Locale.ROOT);
-        Side side = SimulatorContractMapper.toSide(draft.getDirection());
+        Side side = TradingSystemContractMapper.toSide(draft.getDirection());
         LOG.info("Booking market trade requestId={} pair={} side={} quantity={} {} tenor={}",
                 requestId, pair, side, draft.getQty(), quantityCurrency, draft.getTenor());
 
@@ -68,13 +68,13 @@ public class TradeService {
                 .currencyPair(pair)
                 .quantity(BigDecimal.valueOf(draft.getQty()))
                 .quantityCurrency(quantityCurrency)
-                .tenor(SimulatorContractMapper.toContractTenor(draft.getTenor()))
+                .tenor(TradingSystemContractMapper.toContractTenor(draft.getTenor()))
                 .side(side)
                 .quoteType("ONE_WAY");
-        PriceQuote priced = simulator.requestPrice(pricingRequest);
+        PriceQuote priced = tradingSystem.requestPrice(pricingRequest);
         if (!(priced instanceof OneWayPriceQuote quote)) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Simulator returned an unexpected quote variant.");
+                    "Trading System returned an unexpected quote variant.");
         }
 
         String bookingRequestId = idGenerator.generate();
@@ -86,7 +86,7 @@ public class TradeService {
                 .quoteId(quote.getQuoteId())
                 .side(side);
         String idempotencyKey = textOr(draft.getIdempotencyKey(), requestId);
-        Trade trade = record(simulator.bookTrade(idempotencyKey, bookingRequest), draft, "MARKET", null);
+        Trade trade = record(tradingSystem.bookTrade(idempotencyKey, bookingRequest), draft, "MARKET", null);
         LOG.info("Market trade booked tradeId={} quoteId={} price={}",
                 trade.getId(), trade.getQuoteId(), trade.getPrice());
         return trade;
@@ -100,9 +100,9 @@ public class TradeService {
             LOG.debug("Trade reconciliation skipped because trade already exists tradeId={}", tradeId);
             return existing;
         }
-        LOG.info("Reconciling simulator trade tradeId={} executionType={} orderId={}",
+        LOG.info("Reconciling Trading System trade tradeId={} executionType={} orderId={}",
                 tradeId, executionType, orderId);
-        BookedTrade booked = simulator.getBooking(tradeId, requestId, channel, segment, customerId);
+        BookedTrade booked = tradingSystem.getBooking(tradeId, requestId, channel, segment, customerId);
         return record(booked, metadata, executionType, orderId);
     }
 
@@ -119,9 +119,9 @@ public class TradeService {
         trade.setSegment(booked.getSegment());
         trade.setCustomerId(booked.getCustomerId());
         trade.setCcyPair(booked.getCurrencyPair());
-        trade.setTenor(SimulatorContractMapper.toUiTenor(booked.getTenor()));
+        trade.setTenor(TradingSystemContractMapper.toUiTenor(booked.getTenor()));
         trade.setQty(booked.getQuantity().doubleValue());
-        trade.setDirection(SimulatorContractMapper.toDirection(booked.getSide()));
+        trade.setDirection(TradingSystemContractMapper.toDirection(booked.getSide()));
         trade.setDealtCurrency(booked.getQuantityCurrency());
         trade.setQuantityCurrency(booked.getQuantityCurrency());
         trade.setPrice(booked.getClientPrice().doubleValue());
@@ -140,7 +140,7 @@ public class TradeService {
         trade.setBookingMode("live");
         trade.setExecutionType(executionType);
         trade.setLimitOrderId(orderId);
-        trade.setMarketSource("SIMULATOR");
+        trade.setMarketSource("TRADING_SYSTEM");
         copyDeskMetadata(metadata, trade);
         Trade saved = tradeRepository.save(trade);
         LOG.debug("Trade persisted tradeId={} status={} executionType={} orderId={}",
@@ -150,13 +150,13 @@ public class TradeService {
 
     private void copyDeskMetadata(Trade source, Trade target) {
         if (source == null) {
-            target.setCustomer("Simulator customer " + target.getCustomerId());
+            target.setCustomer("Trading System customer " + target.getCustomerId());
             target.setTrader("system");
             target.setProductType("SPOT_FWD");
             target.setProductDetails(target.getTenor() + " settle " + target.getSettlementDate());
             return;
         }
-        target.setCustomer(textOr(source.getCustomer(), "Simulator customer " + target.getCustomerId()));
+        target.setCustomer(textOr(source.getCustomer(), "Trading System customer " + target.getCustomerId()));
         target.setRm(textOr(source.getRm(), "N/A"));
         target.setSales(textOr(source.getSales(), "N/A"));
         target.setComments(textOr(source.getComments(), ""));
@@ -181,7 +181,7 @@ public class TradeService {
         }
         if (!"SPOT_FWD".equalsIgnoreCase(textOr(draft.getProductType(), "SPOT_FWD"))) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "The simulator contract currently supports FX spot and outright forwards only.");
+                    "The Trading System contract currently supports FX spot and outright forwards only.");
         }
     }
 

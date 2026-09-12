@@ -1,6 +1,6 @@
 package com.example.fx.simulator.service;
 
-import com.example.fx.simulator.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Side;
 import org.springframework.http.HttpStatus;
 
 public final class SimulatorApiException extends RuntimeException {

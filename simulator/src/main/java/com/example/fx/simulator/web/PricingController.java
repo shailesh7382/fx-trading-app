@@ -3,9 +3,9 @@ package com.example.fx.simulator.web;
 import java.net.URI;
 import java.util.UUID;
 
-import com.example.fx.simulator.api.PricingApi;
-import com.example.fx.simulator.api.model.PriceQuote;
-import com.example.fx.simulator.api.model.PriceRequest;
+import com.example.fx.tradingsystems.api.PricingApi;
+import com.example.fx.tradingsystems.api.model.PriceQuote;
+import com.example.fx.tradingsystems.api.model.PriceRequest;
 import com.example.fx.simulator.service.SimulatorTradingService;
 import com.example.fx.simulator.domain.TradingModels.*;
 import org.springframework.http.MediaType;

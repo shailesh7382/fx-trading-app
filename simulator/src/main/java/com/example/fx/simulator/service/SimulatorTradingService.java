@@ -3,7 +3,7 @@ package com.example.fx.simulator.service;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import com.example.fx.simulator.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Side;
 import com.example.fx.simulator.domain.TradingModels.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

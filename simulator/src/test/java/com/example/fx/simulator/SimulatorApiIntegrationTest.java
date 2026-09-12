@@ -5,7 +5,7 @@ import java.math.RoundingMode;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import com.example.fx.simulator.api.model.*;
+import com.example.fx.tradingsystems.api.model.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -212,8 +212,8 @@ class SimulatorApiIntegrationTest {
     void generatedHttpClientsRoundTripBothVariantsAndBookings() throws Exception {
         var client = RestClient.builder().requestFactory(new MockMvcClientHttpRequestFactory(mvc)).build();
         var factory = HttpServiceProxyFactory.builderFor(RestClientAdapter.create(client)).build();
-        var pricing = factory.createClient(com.example.fx.simulator.client.PricingApi.class);
-        var bookings = factory.createClient(com.example.fx.simulator.client.BookingApi.class);
+        var pricing = factory.createClient(com.example.fx.tradingsystems.client.PricingApi.class);
+        var bookings = factory.createClient(com.example.fx.tradingsystems.client.BookingApi.class);
         OneWayPriceRequest one = mapper.treeToValue(price("ONE_WAY", "EUR", "BUY"), OneWayPriceRequest.class);
         OneWayPriceQuote quote = (OneWayPriceQuote) pricing.requestPrice(one).getBody();
         assertThat(quote.getClientPrice()).isPositive();
@@ -235,7 +235,7 @@ class SimulatorApiIntegrationTest {
 
     @Test
     void servesAuthoritativeContract() throws Exception {
-        mvc.perform(get("/openapi/fx-simulator-api.yaml")).andExpect(status().isOk())
+        mvc.perform(get("/openapi/fx-trading-systems-api.yaml")).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("version: 2.5.0")));
     }
 }

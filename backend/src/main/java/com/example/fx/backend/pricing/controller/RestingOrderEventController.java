@@ -1,7 +1,7 @@
 package com.example.fx.backend.pricing.controller;
 
 import com.example.fx.backend.pricing.service.LimitOrderService;
-import com.example.fx.simulator.api.model.RestingOrderEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderEvent;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;

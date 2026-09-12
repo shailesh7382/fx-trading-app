@@ -13,7 +13,7 @@ import jakarta.persistence.Table;
  * read-modify-write cannot give the atomicity the allocation needs.
  */
 @Entity
-@Table(name = "id_block_allocation")
+@Table(name = "BKND_ID_BLOCK_ALLOCATION")
 public class IdBlockAllocation {
 
     /** Usually the system identifier, so each system counts independently. */

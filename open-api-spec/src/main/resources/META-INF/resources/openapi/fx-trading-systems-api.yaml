@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
-  title: FX Simulator API
+  title: FX Trading Systems API
   version: 2.5.0
   description: |
-    Contract for requesting executable FX prices and booking simulated trades.
+    Contract for requesting executable FX prices and booking trades through a trading system.
     A one-way request returns one flat executable price; a two-way request returns flat BUY and SELL fields.
     Quotes are single-use and expire at `expiresAt`. All rates are quote currency per base currency.
-    Identification is business context for this local simulator, not authentication.
+    Identification is business context for this local trading system, not authentication.
     POST bodies carry requestId/channel/segment/customerId. GET operations carry the equivalent X-* headers.
     Responses echo the current request context; originalRequestId identifies the resource's creation request.
     State and idempotency are bounded, in-memory, single-instance, and reset on restart.
@@ -17,7 +17,7 @@ info:
     A terminal order is reported to the caller's callbackUrl at least once; receivers dedupe on eventId.
 servers:
   - url: http://localhost:8090
-    description: Local simulator
+    description: Local trading system
 tags:
   - name: Pricing
     description: Request and inspect executable FX quotes.
@@ -92,7 +92,7 @@ paths:
         Replays may use a new requestId and receive fresh responseId/responseAt, with the original trade unchanged.
         Within retention, changing quoteId, side, channel, or segment for the same key returns 409.
         Booking and lookup must match the quote/trade's channel, segment, and customerId; mismatches return 404.
-        After idempotency retention elapses the key may be reused. No guarantees survive a simulator restart.
+        After idempotency retention elapses the key may be reused. No guarantees survive a trading system restart.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -145,7 +145,7 @@ paths:
         - name: tradeId
           in: path
           required: true
-          description: Simulator trade identifier.
+          description: Trading system trade identifier.
           schema:
             type: string
             format: uuid
@@ -177,7 +177,7 @@ paths:
         GOOD_TILL_TIME requires expiresAt in the future; GOOD_TILL_CANCELLED must omit it.
         Working orders are evaluated on a fixed interval, so triggering is not instantaneous and the
         executed price is the one quoted at the evaluation that triggered it, never the limit itself.
-        A triggered order books a trade retrievable at /api/v1/bookings/{tradeId}, then the simulator
+        A triggered order books a trade retrievable at /api/v1/bookings/{tradeId}, then the trading system
         delivers a callback to callbackUrl. Orders and their events are bounded in-memory state.
       requestBody:
         required: true
@@ -220,7 +220,7 @@ paths:
             post:
               tags: [Resting Orders]
               operationId: onRestingOrderEvent
-              summary: Terminal-state notification delivered by the simulator
+              summary: Terminal-state notification delivered by the trading system
               description: |
                 Delivered at least once when a working order becomes TRIGGERED or EXPIRED.
                 eventId is stable across retries of the same event, so receivers must dedupe on it.
@@ -333,7 +333,7 @@ components:
       name: quoteId
       in: path
       required: true
-      description: Simulator quote identifier.
+      description: Trading system quote identifier.
       schema:
         type: string
         format: uuid
@@ -1004,8 +1004,8 @@ components:
       pattern: '^https?://\S+$'
       example: http://localhost:8080/api/resting-orders/events
       description: |
-        Absolute http(s) URL the simulator POSTs order events to. It must start with one of the
-        simulator's configured allowed prefixes; any other URL is rejected with 422.
+        Absolute http(s) URL the trading system POSTs order events to. It must start with one of the
+        trading system's configured allowed prefixes; any other URL is rejected with 422.
     AttemptCount:
       type: integer
       format: int32
@@ -1049,7 +1049,7 @@ components:
       type: string
       enum: [WORKING, TRIGGERED, EXPIRED, CANCELLED]
       description: |
-        WORKING orders are evaluated on the simulator's interval. TRIGGERED, EXPIRED, and
+        WORKING orders are evaluated on the trading system's interval. TRIGGERED, EXPIRED, and
         CANCELLED are terminal; only TRIGGERED and EXPIRED produce a callback.
     CallbackStatus:
       type: string

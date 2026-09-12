@@ -1,14 +1,14 @@
 package com.example.fx.backend.pricing.dto;
 
-import com.example.fx.backend.simulator.SimulatorContractMapper;
-import com.example.fx.simulator.api.model.TwoWayPriceQuote;
+import com.example.fx.backend.tradingsystem.TradingSystemContractMapper;
+import com.example.fx.tradingsystems.api.model.TwoWayPriceQuote;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.UUID;
 
-/** UI projection of the complete two-way simulator quote. */
+/** UI projection of a complete two-way Trading System quote. */
 public class FxPriceDTO {
     private UUID quoteId;
     private String requestId;
@@ -48,7 +48,7 @@ public class FxPriceDTO {
         segment = quote.getSegment();
         customerId = quote.getCustomerId();
         ccyPair = quote.getCurrencyPair();
-        tenor = SimulatorContractMapper.toUiTenor(quote.getTenor());
+        tenor = TradingSystemContractMapper.toUiTenor(quote.getTenor());
         contractTenor = quote.getTenor().getValue();
         qty = quote.getQuantity();
         quantityCurrency = quote.getQuantityCurrency();
@@ -62,7 +62,7 @@ public class FxPriceDTO {
         valueDate = quote.getValueDate();
         quotedAt = quote.getQuotedAt();
         expiresAt = quote.getExpiresAt();
-        source = "SIMULATOR";
+        source = "TRADING_SYSTEM";
         status = quote.getStatus().getValue();
     }
 
@@ -95,7 +95,7 @@ public class FxPriceDTO {
 
     public static Comparator<FxPriceDTO> comparator() {
         return Comparator.comparing(FxPriceDTO::getTenor,
-                        Comparator.comparingInt(SimulatorContractMapper::tenorOrder))
+                        Comparator.comparingInt(TradingSystemContractMapper::tenorOrder))
                 .thenComparing(FxPriceDTO::getQty)
                 .thenComparing(FxPriceDTO::getCcyPair);
     }

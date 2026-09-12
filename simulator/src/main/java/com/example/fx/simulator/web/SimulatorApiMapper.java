@@ -5,7 +5,7 @@ import java.net.URISyntaxException;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import com.example.fx.simulator.api.model.*;
+import com.example.fx.tradingsystems.api.model.*;
 import com.example.fx.simulator.domain.TradingModels.*;
 // Both packages define a RestingOrder; the single-type import makes the unqualified name the domain record.
 import com.example.fx.simulator.domain.TradingModels.RestingOrder;
@@ -51,11 +51,11 @@ public class SimulatorApiMapper {
                 request.getQuantity(), request.getLimitPrice(), request.getTimeInForce(), request.getExpiresAt());
     }
 
-    public com.example.fx.simulator.api.model.RestingOrder restingOrder(RestingOrder order, RequestContext context) {
+    public com.example.fx.tradingsystems.api.model.RestingOrder restingOrder(RestingOrder order, RequestContext context) {
         RestingOrderCommand command = order.command();
         PricingCommand pricing = command.pricing();
         Identity identity = context.identity();
-        return new com.example.fx.simulator.api.model.RestingOrder().requestId(context.requestId())
+        return new com.example.fx.tradingsystems.api.model.RestingOrder().requestId(context.requestId())
                 .channel(identity.channel()).segment(identity.segment()).customerId(identity.customerId())
                 .originalRequestId(command.context().requestId()).responseId(UUID.randomUUID()).responseAt(now())
                 .orderId(order.orderId()).currencyPair(pricing.currencyPair()).quantity(pricing.quantity())

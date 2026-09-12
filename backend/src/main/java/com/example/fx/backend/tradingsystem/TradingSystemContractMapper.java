@@ -1,11 +1,11 @@
-package com.example.fx.backend.simulator;
+package com.example.fx.backend.tradingsystem;
 
-import com.example.fx.simulator.api.model.Side;
-import com.example.fx.simulator.api.model.Tenor;
+import com.example.fx.tradingsystems.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Tenor;
 import java.util.Locale;
 
-public final class SimulatorContractMapper {
-    private SimulatorContractMapper() {}
+public final class TradingSystemContractMapper {
+    private TradingSystemContractMapper() {}
 
     public static Tenor toContractTenor(String value) {
         return switch (text(value, "SP").toUpperCase(Locale.ROOT)) {

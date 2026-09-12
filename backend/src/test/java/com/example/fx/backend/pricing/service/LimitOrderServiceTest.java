@@ -5,14 +5,14 @@ import com.example.fx.backend.pricing.dto.LimitOrderRequest;
 import com.example.fx.backend.pricing.model.LimitOrder;
 import com.example.fx.backend.pricing.model.LimitOrderStatus;
 import com.example.fx.backend.pricing.repository.LimitOrderRepository;
-import com.example.fx.backend.simulator.SimulatorClientProperties;
-import com.example.fx.backend.simulator.SimulatorGateway;
 import com.example.fx.backend.support.SequentialIdGenerator;
-import com.example.fx.simulator.api.model.CallbackStatus;
-import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
-import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
-import com.example.fx.simulator.api.model.Side;
-import com.example.fx.simulator.api.model.Tenor;
+import com.example.fx.backend.tradingsystem.TradingSystemClientProperties;
+import com.example.fx.backend.tradingsystem.TradingSystemGateway;
+import com.example.fx.tradingsystems.api.model.CallbackStatus;
+import com.example.fx.tradingsystems.api.model.RestingOrderAmendRequest;
+import com.example.fx.tradingsystems.api.model.RestingOrderTriggeredEvent;
+import com.example.fx.tradingsystems.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Tenor;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Clock;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class LimitOrderServiceTest {
     @Mock LimitOrderRepository repository;
-    @Mock SimulatorGateway simulator;
+    @Mock TradingSystemGateway tradingSystem;
     @Mock TradeService trades;
     @Mock SequentialIdGenerator idGenerator;
     private LimitOrderService service;
@@ -46,15 +46,15 @@ class LimitOrderServiceTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-08T08:00:00Z"), ZoneOffset.UTC);
-        service = new LimitOrderService(repository, simulator, properties(), trades, clock, idGenerator);
+        service = new LimitOrderService(repository, tradingSystem, properties(), trades, clock, idGenerator);
         lenient().when(idGenerator.generate()).thenReturn("B00000001");
         lenient().when(repository.save(any(LimitOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
     void placesAndAmendsUsingTheGeneratedRestingOrderContract() {
-        when(simulator.placeRestingOrder(any())).thenAnswer(invocation -> {
-            com.example.fx.simulator.api.model.RestingOrderRequest input = invocation.getArgument(0);
+        when(tradingSystem.placeRestingOrder(any())).thenAnswer(invocation -> {
+            com.example.fx.tradingsystems.api.model.RestingOrderRequest input = invocation.getArgument(0);
             return remote(input.getOrderId(), input.getRequestId(), input.getQuantity(), input.getLimitPrice());
         });
         LimitOrderRequest input = new LimitOrderRequest();
@@ -75,7 +75,7 @@ class LimitOrderServiceTest {
         assertThat(placed.getCallbackStatus()).isEqualTo("NOT_REQUIRED");
 
         when(repository.findById(placed.getId())).thenReturn(Optional.of(placed));
-        when(simulator.amendRestingOrder(eq(placed.getId()), any())).thenAnswer(invocation -> {
+        when(tradingSystem.amendRestingOrder(eq(placed.getId()), any())).thenAnswer(invocation -> {
             RestingOrderAmendRequest amendment = invocation.getArgument(1);
             return remote(placed.getId(), amendment.getRequestId(), amendment.getQuantity(), amendment.getLimitPrice());
         });
@@ -87,9 +87,9 @@ class LimitOrderServiceTest {
 
         LimitOrder amended = service.amendLimitOrder(placed.getId(), amendment);
         ArgumentCaptor<RestingOrderAmendRequest> captured = ArgumentCaptor.forClass(RestingOrderAmendRequest.class);
-        verify(simulator).amendRestingOrder(eq(placed.getId()), captured.capture());
+        verify(tradingSystem).amendRestingOrder(eq(placed.getId()), captured.capture());
         assertThat(captured.getValue().getTimeInForce())
-                .isEqualTo(com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_TIME);
+                .isEqualTo(com.example.fx.tradingsystems.api.model.TimeInForce.GOOD_TILL_TIME);
         assertThat(captured.getValue().getExpiresAt()).isAfter(now);
         assertThat(amended.getQty()).isEqualTo(2_000_000);
     }
@@ -111,7 +111,7 @@ class LimitOrderServiceTest {
                 .originalRequestId("place").channel("WEB").segment("C").customerId("0000123456")
                 .currencyPair("EURUSD").quantity(new BigDecimal("1000000")).quantityCurrency("EUR")
                 .tenor(Tenor.SPOT).side(Side.BUY).limitPrice(new BigDecimal("1.1"))
-                .status(com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED)
+                .status(com.example.fx.tradingsystems.api.model.RestingOrderStatus.TRIGGERED)
                 .tradeId(tradeId).coverPrice(new BigDecimal("1.09")).clientPrice(new BigDecimal("1.091"))
                 .swapPoints(BigDecimal.ZERO).buyCurrency("EUR").buyQuantity(new BigDecimal("1000000"))
                 .sellCurrency("USD").sellQuantity(new BigDecimal("1091000"))
@@ -121,7 +121,7 @@ class LimitOrderServiceTest {
         service.receiveEvent(event);
 
         assertThat(order.getStatus()).isEqualTo(LimitOrderStatus.EXECUTED);
-        assertThat(order.getSimulatorTradeId()).isEqualTo(tradeId.toString());
+        assertThat(order.getTradingSystemTradeId()).isEqualTo(tradeId.toString());
         verify(trades, times(1)).reconcileBooking(eq(tradeId), anyString(), eq("WEB"), eq("C"),
                 eq("0000123456"), any(), eq("LIMIT"), eq("ORD-1"));
         verify(repository, times(1)).save(order);
@@ -137,9 +137,9 @@ class LimitOrderServiceTest {
         order.setSegment("C");
         order.setCustomerId("0000123456");
         UUID tradeId = UUID.randomUUID();
-        com.example.fx.simulator.api.model.RestingOrder delivered = remote(
+        com.example.fx.tradingsystems.api.model.RestingOrder delivered = remote(
                         order.getId(), "status-request", new BigDecimal("1000000"), new BigDecimal("1.1"))
-                .status(com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED)
+                .status(com.example.fx.tradingsystems.api.model.RestingOrderStatus.TRIGGERED)
                 .closedAt(now)
                 .lastEvaluatedAt(now)
                 .lastEvaluatedPrice(new BigDecimal("1.091"))
@@ -150,7 +150,7 @@ class LimitOrderServiceTest {
         when(repository.findByCallbackStatusOrderBySubmittedAtDesc(CallbackStatus.PENDING.getValue()))
                 .thenReturn(List.of(order));
         when(repository.findAllByOrderBySubmittedAtDesc()).thenReturn(List.of(order));
-        when(simulator.getRestingOrder(eq(order.getId()), anyString(), eq("WEB"), eq("C"), eq("0000123456")))
+        when(tradingSystem.getRestingOrder(eq(order.getId()), anyString(), eq("WEB"), eq("C"), eq("0000123456")))
                 .thenReturn(delivered);
 
         List<LimitOrder> result = service.getOrders("ALL", null);
@@ -175,24 +175,24 @@ class LimitOrderServiceTest {
         List<LimitOrder> result = service.getOrders("ALL", null);
 
         assertThat(result).containsExactly(order);
-        verifyNoInteractions(simulator);
+        verifyNoInteractions(tradingSystem);
     }
 
-    private com.example.fx.simulator.api.model.RestingOrder remote(
+    private com.example.fx.tradingsystems.api.model.RestingOrder remote(
             String orderId, String requestId, BigDecimal quantity, BigDecimal limitPrice) {
-        return new com.example.fx.simulator.api.model.RestingOrder()
+        return new com.example.fx.tradingsystems.api.model.RestingOrder()
                 .requestId(requestId).channel("WEB").segment("C").customerId("0000123456")
                 .originalRequestId("place-request").responseId(UUID.randomUUID()).responseAt(now)
                 .orderId(orderId).currencyPair("EURUSD").quantity(quantity).quantityCurrency("EUR")
                 .tenor(Tenor.ONE_MONTH).side(Side.BUY).limitPrice(limitPrice)
-                .timeInForce(com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_CANCELLED)
-                .status(com.example.fx.simulator.api.model.RestingOrderStatus.WORKING).placedAt(now)
+                .timeInForce(com.example.fx.tradingsystems.api.model.TimeInForce.GOOD_TILL_CANCELLED)
+                .status(com.example.fx.tradingsystems.api.model.RestingOrderStatus.WORKING).placedAt(now)
                 .callbackUrl("http://localhost:8080/api/resting-orders/events")
                 .callbackStatus(CallbackStatus.NOT_REQUIRED).callbackAttempts(0);
     }
 
-    private SimulatorClientProperties properties() {
-        return new SimulatorClientProperties(URI.create("http://localhost:8090"), Duration.ofSeconds(2),
+    private TradingSystemClientProperties properties() {
+        return new TradingSystemClientProperties(URI.create("http://localhost:8090"), Duration.ofSeconds(2),
                 Duration.ofSeconds(5), "WEB", "C", "0000123456",
                 URI.create("http://localhost:8080/api/resting-orders/events"),
                 new BigDecimal("1000000"), List.of("EURUSD"));

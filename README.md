@@ -4,21 +4,21 @@ This repository contains a multi-service FX trading demo stack:
 
 - `open-api-spec` — authored OpenAPI contract plus generated Java API interfaces and models
 - `simulator` — executable FX pricing, idempotent trade booking, and resting orders
-- `backend` — authentication, a REST workspace API, generated simulator clients, callback reconciliation, and H2 persistence
+- `backend` — authentication, a REST workspace API, generated Trading System clients, callback reconciliation, and H2 persistence
 - `frontend` — Spring Boot host for the SPA, with the React app under `frontend/app`
 - `distribution` — packages every service and its operating scripts into one tarball
 
-The backend is integrated with the simulator exclusively through HTTP interfaces generated from the authored
+The backend is integrated with the Trading System (implemented here by the simulator module) exclusively through HTTP interfaces generated from the authored
 OpenAPI contract. It requests executable prices, books them with idempotency keys, delegates resting-order
 placement/amendment/cancellation, receives terminal callbacks, and reconciles missed callbacks by trade ID.
 The former JMS/local market-data engine and the unused UI streaming abstraction have been removed.
 
-## Simulator API
+## Trading Systems API
 
 The simulator runs on port `8090` and exposes the authored contract at:
 
 - Swagger UI: `http://localhost:8090/swagger-ui.html`
-- OpenAPI YAML: `http://localhost:8090/openapi/fx-simulator-api.yaml`
+- OpenAPI YAML: `http://localhost:8090/openapi/fx-trading-systems-api.yaml`
 - Pricing: `POST /api/v1/pricing/quotes` and `GET /api/v1/pricing/quotes/{quoteId}`
 - Booking: `POST /api/v1/bookings` and `GET /api/v1/bookings/{tradeId}`
 - Resting orders: `POST /api/v1/resting-orders`, `GET/PUT/DELETE /api/v1/resting-orders/{orderId}`
@@ -67,15 +67,15 @@ delivery was interrupted.
 
 The UI uses these backend endpoints on port `8080`:
 
-- `GET /api/rates` and `GET /api/rates/grid` — fresh two-way simulator quotes with quote/response IDs,
+- `GET /api/rates` and `GET /api/rates/grid` — fresh two-way Trading System quotes with quote/response IDs,
   cover prices, client prices, swap points, spot/value dates, and expiry
 - `GET/POST /api/trades` — locally indexed trade history and contract-driven quote-then-book execution
 - `GET/POST /api/resting-orders`, `PUT/DELETE /api/resting-orders/{orderId}` — persisted workspace views backed
-  by the simulator lifecycle
+  by the Trading System lifecycle
 - `POST /api/resting-orders/events` — at-least-once terminal callback receiver
 
 Client connection details, business identity defaults, instrument universe, timeouts, and callback URL are
-configured under `simulator.client.*` in `backend/src/main/resources/application.properties`.
+configured under `trading-system.client.*` in `backend/src/main/resources/application.properties`.
 
 The validated Spring server interfaces, shared DTOs, and declarative Spring HTTP client interfaces are generated
 during Maven's `generate-sources` phase. Edit the YAML in `open-api-spec`; do not edit files under

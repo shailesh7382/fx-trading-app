@@ -1,4 +1,4 @@
-package com.example.fx.backend.simulator;
+package com.example.fx.backend.tradingsystem;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -6,8 +6,8 @@ import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties("simulator.client")
-public record SimulatorClientProperties(
+@ConfigurationProperties("trading-system.client")
+public record TradingSystemClientProperties(
         URI baseUrl,
         Duration connectTimeout,
         Duration readTimeout,
@@ -18,7 +18,7 @@ public record SimulatorClientProperties(
         BigDecimal defaultQuantity,
         List<String> instruments
 ) {
-    public SimulatorClientProperties {
+    public TradingSystemClientProperties {
         baseUrl = baseUrl == null ? URI.create("http://localhost:8090") : baseUrl;
         connectTimeout = connectTimeout == null ? Duration.ofSeconds(2) : connectTimeout;
         readTimeout = readTimeout == null ? Duration.ofSeconds(5) : readTimeout;

@@ -6,7 +6,7 @@ import java.time.OffsetDateTime;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import com.example.fx.simulator.api.model.ApiProblem;
+import com.example.fx.tradingsystems.api.model.ApiProblem;
 import com.example.fx.simulator.service.SimulatorApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

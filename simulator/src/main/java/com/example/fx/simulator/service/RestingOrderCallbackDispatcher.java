@@ -1,9 +1,9 @@
 package com.example.fx.simulator.service;
 
-import com.example.fx.simulator.api.model.RestingOrderEvent;
-import com.example.fx.simulator.api.model.RestingOrderExpiredEvent;
-import com.example.fx.simulator.api.model.RestingOrderStatus;
-import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderExpiredEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderStatus;
+import com.example.fx.tradingsystems.api.model.RestingOrderTriggeredEvent;
 import com.example.fx.simulator.config.RestingOrderProperties;
 import com.example.fx.simulator.domain.TradingModels.*;
 import com.fasterxml.jackson.core.JsonProcessingException;

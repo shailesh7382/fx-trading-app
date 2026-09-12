@@ -4,7 +4,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
-import com.example.fx.simulator.api.model.Tenor;
+import com.example.fx.tradingsystems.api.model.Tenor;
 import com.example.fx.simulator.config.SettlementProperties;
 import com.example.fx.simulator.domain.TradingModels.SettlementDates;
 import org.springframework.stereotype.Component;

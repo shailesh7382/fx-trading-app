@@ -31,7 +31,7 @@ class SequentialIdGeneratorTest {
                 .build();
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("""
-                CREATE TABLE id_block_allocation (
+                CREATE TABLE BKND_ID_BLOCK_ALLOCATION (
                     sequence_name VARCHAR(64) NOT NULL PRIMARY KEY,
                     next_value BIGINT NOT NULL
                 )
@@ -85,7 +85,7 @@ class SequentialIdGeneratorTest {
         }
 
         assertThat(jdbc.queryForObject(
-                "SELECT next_value FROM id_block_allocation WHERE sequence_name = 'B'", Long.class))
+                "SELECT next_value FROM BKND_ID_BLOCK_ALLOCATION WHERE sequence_name = 'B'", Long.class))
                 .isEqualTo(1_000);
     }
 
@@ -118,10 +118,10 @@ class SequentialIdGeneratorTest {
     @Test
     void differentSystemLettersCannotCollideOnTheSameCounterValue() {
         SequentialIdGenerator backend = generator("B", 10);
-        SequentialIdGenerator simulator = generator("S", 10);
+        SequentialIdGenerator tradingSystem = generator("S", 10);
 
         assertThat(backend.generate()).isEqualTo("B00000000");
-        assertThat(simulator.generate()).isEqualTo("S00000000");
+        assertThat(tradingSystem.generate()).isEqualTo("S00000000");
     }
 
     @Test
@@ -149,7 +149,7 @@ class SequentialIdGeneratorTest {
 
     @Test
     void refusesToSilentlyWrapWhenTheCounterSpaceRunsOut() {
-        jdbc.update("INSERT INTO id_block_allocation (sequence_name, next_value) VALUES ('B', ?)",
+        jdbc.update("INSERT INTO BKND_ID_BLOCK_ALLOCATION (sequence_name, next_value) VALUES ('B', ?)",
                 SequentialIdGenerator.CAPACITY - 1);
         SequentialIdGenerator generator = generator("B", 10);
 

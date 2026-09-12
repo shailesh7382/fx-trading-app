@@ -7,16 +7,16 @@ import com.example.fx.backend.pricing.model.LimitOrderStatus;
 import com.example.fx.backend.pricing.model.TimeInForce;
 import com.example.fx.backend.pricing.model.Trade;
 import com.example.fx.backend.pricing.repository.LimitOrderRepository;
-import com.example.fx.backend.simulator.SimulatorClientProperties;
-import com.example.fx.backend.simulator.SimulatorContractMapper;
-import com.example.fx.backend.simulator.SimulatorGateway;
 import com.example.fx.backend.support.SequentialIdGenerator;
-import com.example.fx.simulator.api.model.CallbackStatus;
-import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
-import com.example.fx.simulator.api.model.RestingOrderEvent;
-import com.example.fx.simulator.api.model.RestingOrderExpiredEvent;
-import com.example.fx.simulator.api.model.RestingOrderRequest;
-import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
+import com.example.fx.backend.tradingsystem.TradingSystemClientProperties;
+import com.example.fx.backend.tradingsystem.TradingSystemContractMapper;
+import com.example.fx.backend.tradingsystem.TradingSystemGateway;
+import com.example.fx.tradingsystems.api.model.CallbackStatus;
+import com.example.fx.tradingsystems.api.model.RestingOrderAmendRequest;
+import com.example.fx.tradingsystems.api.model.RestingOrderEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderExpiredEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderRequest;
+import com.example.fx.tradingsystems.api.model.RestingOrderTriggeredEvent;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -39,17 +39,17 @@ public class LimitOrderService {
     private static final Logger LOG = LoggerFactory.getLogger(LimitOrderService.class);
 
     private final LimitOrderRepository repository;
-    private final SimulatorGateway simulator;
-    private final SimulatorClientProperties properties;
+    private final TradingSystemGateway tradingSystem;
+    private final TradingSystemClientProperties properties;
     private final TradeService tradeService;
     private final Clock clock;
     private final SequentialIdGenerator idGenerator;
 
-    public LimitOrderService(LimitOrderRepository repository, SimulatorGateway simulator,
-                             SimulatorClientProperties properties, TradeService tradeService, Clock clock,
+    public LimitOrderService(LimitOrderRepository repository, TradingSystemGateway tradingSystem,
+                             TradingSystemClientProperties properties, TradeService tradeService, Clock clock,
                              SequentialIdGenerator idGenerator) {
         this.repository = repository;
-        this.simulator = simulator;
+        this.tradingSystem = tradingSystem;
         this.properties = properties;
         this.tradeService = tradeService;
         this.clock = clock;
@@ -72,19 +72,19 @@ public class LimitOrderService {
                 orderId, requestId, pair, request.getDirection(), request.getQty(), request.getDealtCurrency(),
                 request.getLimitPrice(), timeInForce);
 
-        RestingOrderRequest simulatorRequest = new RestingOrderRequest()
+        RestingOrderRequest tradingSystemRequest = new RestingOrderRequest()
                 .requestId(requestId).orderId(orderId)
                 .channel(channel).segment(segment).customerId(customerId)
                 .currencyPair(pair).quantity(BigDecimal.valueOf(request.getQty()))
                 .quantityCurrency(request.getDealtCurrency().trim().toUpperCase(Locale.ROOT))
-                .tenor(SimulatorContractMapper.toContractTenor(request.getTenor()))
-                .side(SimulatorContractMapper.toSide(request.getDirection()))
+                .tenor(TradingSystemContractMapper.toContractTenor(request.getTenor()))
+                .side(TradingSystemContractMapper.toSide(request.getDirection()))
                 .limitPrice(BigDecimal.valueOf(request.getLimitPrice()))
                 .timeInForce(toContractTimeInForce(timeInForce))
                 .expiresAt(expiresAt)
                 .callbackUrl(properties.callbackUrl().toString());
 
-        LimitOrder order = apply(simulator.placeRestingOrder(simulatorRequest), new LimitOrder());
+        LimitOrder order = apply(tradingSystem.placeRestingOrder(tradingSystemRequest), new LimitOrder());
         copyDeskMetadata(request, order);
         LimitOrder saved = repository.save(order);
         LOG.info("Resting order persisted orderId={} status={} callbackStatus={}",
@@ -118,7 +118,7 @@ public class LimitOrderService {
                 .limitPrice(BigDecimal.valueOf(request.getLimitPrice()))
                 .timeInForce(toContractTimeInForce(timeInForce))
                 .expiresAt(expiry(timeInForce, request.getGoodTillDate()));
-        apply(simulator.amendRestingOrder(orderId, amendment), order);
+        apply(tradingSystem.amendRestingOrder(orderId, amendment), order);
         if (request.getComments() != null) {
             order.setComments(request.getComments().trim());
         }
@@ -132,7 +132,7 @@ public class LimitOrderService {
     public LimitOrder cancelLimitOrder(String orderId) {
         LOG.info("Cancelling resting order orderId={}", orderId);
         LimitOrder order = active(orderId);
-        com.example.fx.simulator.api.model.RestingOrder cancelled = simulator.cancelRestingOrder(
+        com.example.fx.tradingsystems.api.model.RestingOrder cancelled = tradingSystem.cancelRestingOrder(
                 orderId, idGenerator.generate(), order.getChannel(), order.getSegment(), order.getCustomerId());
         LimitOrder saved = repository.save(apply(cancelled, order));
         LOG.info("Resting order cancelled orderId={} status={}", saved.getId(), saved.getStatus());
@@ -174,7 +174,7 @@ public class LimitOrderService {
             order.setLastEvaluatedAt(triggered.getOccurredAt());
             order.setLastEvaluatedPrice(triggered.getClientPrice().doubleValue());
             order.setClosedAt(triggered.getOccurredAt());
-            order.setSimulatorTradeId(triggered.getTradeId().toString());
+            order.setTradingSystemTradeId(triggered.getTradeId().toString());
             tradeService.reconcileBooking(triggered.getTradeId(), idGenerator.generate(),
                     triggered.getChannel(), triggered.getSegment(), triggered.getCustomerId(),
                     metadataFor(order), "LIMIT", order.getId());
@@ -214,7 +214,7 @@ public class LimitOrderService {
                 continue;
             }
             try {
-                com.example.fx.simulator.api.model.RestingOrder remote = simulator.getRestingOrder(
+                com.example.fx.tradingsystems.api.model.RestingOrder remote = tradingSystem.getRestingOrder(
                         order.getId(), idGenerator.generate(), order.getChannel(), order.getSegment(),
                         order.getCustomerId());
                 apply(remote, order);
@@ -232,7 +232,7 @@ public class LimitOrderService {
         }
     }
 
-    private LimitOrder apply(com.example.fx.simulator.api.model.RestingOrder remote, LimitOrder order) {
+    private LimitOrder apply(com.example.fx.tradingsystems.api.model.RestingOrder remote, LimitOrder order) {
         order.setId(remote.getOrderId());
         order.setRequestId(remote.getRequestId());
         order.setOriginalRequestId(remote.getOriginalRequestId());
@@ -242,14 +242,14 @@ public class LimitOrderService {
         order.setSegment(remote.getSegment());
         order.setCustomerId(remote.getCustomerId());
         order.setCcyPair(remote.getCurrencyPair());
-        order.setTenor(SimulatorContractMapper.toUiTenor(remote.getTenor()));
+        order.setTenor(TradingSystemContractMapper.toUiTenor(remote.getTenor()));
         order.setContractTenor(remote.getTenor().getValue());
         order.setQty(remote.getQuantity().doubleValue());
-        order.setDirection(SimulatorContractMapper.toDirection(remote.getSide()));
+        order.setDirection(TradingSystemContractMapper.toDirection(remote.getSide()));
         order.setDealtCurrency(remote.getQuantityCurrency());
         order.setQuantityCurrency(remote.getQuantityCurrency());
         order.setLimitPrice(remote.getLimitPrice().doubleValue());
-        order.setTimeInForce(remote.getTimeInForce() == com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_TIME
+        order.setTimeInForce(remote.getTimeInForce() == com.example.fx.tradingsystems.api.model.TimeInForce.GOOD_TILL_TIME
                 ? TimeInForce.GTD : TimeInForce.GTC);
         order.setGoodTillDate(remote.getExpiresAt() == null ? null : remote.getExpiresAt().toLocalDate());
         order.setExpiresAt(remote.getExpiresAt());
@@ -264,11 +264,11 @@ public class LimitOrderService {
         order.setLastEvaluatedPrice(remote.getLastEvaluatedPrice() == null
                 ? null : remote.getLastEvaluatedPrice().doubleValue());
         order.setClosedAt(remote.getClosedAt());
-        order.setExecutedAt(remote.getStatus() == com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED
+        order.setExecutedAt(remote.getStatus() == com.example.fx.tradingsystems.api.model.RestingOrderStatus.TRIGGERED
                 && remote.getClosedAt() != null ? remote.getClosedAt().toLocalDateTime() : order.getExecutedAt());
-        order.setExecutedPrice(remote.getStatus() == com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED
+        order.setExecutedPrice(remote.getStatus() == com.example.fx.tradingsystems.api.model.RestingOrderStatus.TRIGGERED
                 ? order.getLastEvaluatedPrice() : order.getExecutedPrice());
-        order.setSimulatorTradeId(remote.getTradeId() == null ? null : remote.getTradeId().toString());
+        order.setTradingSystemTradeId(remote.getTradeId() == null ? null : remote.getTradeId().toString());
         order.setCallbackUrl(remote.getCallbackUrl());
         order.setCallbackStatus(remote.getCallbackStatus().getValue());
         order.setCallbackAttempts(remote.getCallbackAttempts());
@@ -289,7 +289,7 @@ public class LimitOrderService {
         LocalDate today = LocalDate.now(clock);
         order.setTradeDate(request.getTradeDate() == null ? today : request.getTradeDate());
         order.setSettlementDate(request.getSettlementDate());
-        order.setCustomer(textOr(request.getCustomer(), "Simulator customer " + order.getCustomerId()));
+        order.setCustomer(textOr(request.getCustomer(), "Trading System customer " + order.getCustomerId()));
         order.setRm(textOr(request.getRm(), "N/A"));
         order.setSales(textOr(request.getSales(), "N/A"));
         order.setComments(textOr(request.getComments(), "Submitted from the rate grid."));
@@ -346,10 +346,10 @@ public class LimitOrderService {
         }
     }
 
-    private com.example.fx.simulator.api.model.TimeInForce toContractTimeInForce(TimeInForce value) {
+    private com.example.fx.tradingsystems.api.model.TimeInForce toContractTimeInForce(TimeInForce value) {
         return value == TimeInForce.GTD
-                ? com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_TIME
-                : com.example.fx.simulator.api.model.TimeInForce.GOOD_TILL_CANCELLED;
+                ? com.example.fx.tradingsystems.api.model.TimeInForce.GOOD_TILL_TIME
+                : com.example.fx.tradingsystems.api.model.TimeInForce.GOOD_TILL_CANCELLED;
     }
 
     private OffsetDateTime expiry(TimeInForce timeInForce, LocalDate goodTillDate) {

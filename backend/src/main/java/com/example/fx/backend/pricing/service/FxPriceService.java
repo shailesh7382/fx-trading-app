@@ -1,13 +1,13 @@
 package com.example.fx.backend.pricing.service;
 
 import com.example.fx.backend.pricing.dto.FxPriceDTO;
-import com.example.fx.backend.simulator.SimulatorClientProperties;
-import com.example.fx.backend.simulator.SimulatorContractMapper;
-import com.example.fx.backend.simulator.SimulatorGateway;
 import com.example.fx.backend.support.SequentialIdGenerator;
-import com.example.fx.simulator.api.model.PriceQuote;
-import com.example.fx.simulator.api.model.TwoWayPriceQuote;
-import com.example.fx.simulator.api.model.TwoWayPriceRequest;
+import com.example.fx.backend.tradingsystem.TradingSystemClientProperties;
+import com.example.fx.backend.tradingsystem.TradingSystemContractMapper;
+import com.example.fx.backend.tradingsystem.TradingSystemGateway;
+import com.example.fx.tradingsystems.api.model.PriceQuote;
+import com.example.fx.tradingsystems.api.model.TwoWayPriceQuote;
+import com.example.fx.tradingsystems.api.model.TwoWayPriceRequest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,16 +22,16 @@ import org.springframework.stereotype.Service;
 public class FxPriceService {
     private static final Logger LOG = LoggerFactory.getLogger(FxPriceService.class);
 
-    private final SimulatorGateway simulator;
-    private final SimulatorClientProperties properties;
+    private final TradingSystemGateway tradingSystem;
+    private final TradingSystemClientProperties properties;
     private final Clock clock;
     private final SequentialIdGenerator idGenerator;
     private volatile List<FxPriceDTO> allPricesSnapshot = List.of();
     private volatile Instant allPricesSnapshotAt = Instant.EPOCH;
 
-    public FxPriceService(SimulatorGateway simulator, SimulatorClientProperties properties, Clock clock,
+    public FxPriceService(TradingSystemGateway tradingSystem, TradingSystemClientProperties properties, Clock clock,
                           SequentialIdGenerator idGenerator) {
-        this.simulator = simulator;
+        this.tradingSystem = tradingSystem;
         this.properties = properties;
         this.clock = clock;
         this.idGenerator = idGenerator;
@@ -79,11 +79,11 @@ public class FxPriceService {
                 .currencyPair(currencyPair)
                 .quantity(properties.defaultQuantity())
                 .quantityCurrency(currencyPair.substring(0, 3))
-                .tenor(SimulatorContractMapper.toContractTenor(tenor))
+                .tenor(TradingSystemContractMapper.toContractTenor(tenor))
                 .quoteType("TWO_WAY");
-        PriceQuote quote = simulator.requestPrice(request);
+        PriceQuote quote = tradingSystem.requestPrice(request);
         if (!(quote instanceof TwoWayPriceQuote twoWay)) {
-            throw new IllegalStateException("Simulator returned a non-two-way quote for a two-way request.");
+            throw new IllegalStateException("Trading System returned a non-two-way quote for a two-way request.");
         }
         LOG.debug("Two-way quote received quoteId={} pair={} tenor={} expiresAt={}",
                 twoWay.getQuoteId(), currencyPair, tenor, twoWay.getExpiresAt());
@@ -95,7 +95,7 @@ public class FxPriceService {
             case "updated" -> Comparator.comparing(FxPriceDTO::getQuotedAt).reversed();
             case "spread" -> Comparator.comparing(price -> price.getAsk().subtract(price.getBid()));
             default -> Comparator.comparing(FxPriceDTO::getCcyPair)
-                    .thenComparingInt(price -> SimulatorContractMapper.tenorOrder(price.getTenor()));
+                    .thenComparingInt(price -> TradingSystemContractMapper.tenorOrder(price.getTenor()));
         };
     }
 }

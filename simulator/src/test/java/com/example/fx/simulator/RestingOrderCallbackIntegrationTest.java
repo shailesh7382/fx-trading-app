@@ -10,10 +10,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import com.example.fx.simulator.api.model.RestingOrder;
-import com.example.fx.simulator.api.model.RestingOrderEvent;
-import com.example.fx.simulator.api.model.RestingOrderExpiredEvent;
-import com.example.fx.simulator.api.model.RestingOrderTriggeredEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrder;
+import com.example.fx.tradingsystems.api.model.RestingOrderEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderExpiredEvent;
+import com.example.fx.tradingsystems.api.model.RestingOrderTriggeredEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +85,7 @@ class RestingOrderCallbackIntegrationTest {
         Instant deadline = Instant.now().plus(DEADLINE);
         RestingOrder order = fetch(orderId);
         while (Instant.now().isBefore(deadline) && order.getCallbackAttempts() == 0
-                || order.getCallbackStatus() == com.example.fx.simulator.api.model.CallbackStatus.PENDING) {
+                || order.getCallbackStatus() == com.example.fx.tradingsystems.api.model.CallbackStatus.PENDING) {
             if (!Instant.now().isBefore(deadline)) break;
             Thread.sleep(25);
             order = fetch(orderId);
@@ -109,8 +109,8 @@ class RestingOrderCallbackIntegrationTest {
         RestingOrder placed = place(order("BUY", "99.00000"));
 
         RestingOrder delivered = awaitDelivery(placed.getOrderId());
-        assertThat(delivered.getStatus()).isEqualTo(com.example.fx.simulator.api.model.RestingOrderStatus.TRIGGERED);
-        assertThat(delivered.getCallbackStatus()).isEqualTo(com.example.fx.simulator.api.model.CallbackStatus.DELIVERED);
+        assertThat(delivered.getStatus()).isEqualTo(com.example.fx.tradingsystems.api.model.RestingOrderStatus.TRIGGERED);
+        assertThat(delivered.getCallbackStatus()).isEqualTo(com.example.fx.tradingsystems.api.model.CallbackStatus.DELIVERED);
         assertThat(delivered.getCallbackAttempts()).isEqualTo(3);
 
         List<RestingOrderEvent> events = received();
@@ -135,7 +135,7 @@ class RestingOrderCallbackIntegrationTest {
         var trade = simulator.get().uri("/api/v1/bookings/{id}", event.getTradeId())
                 .header("X-Request-Id", "from-event").header("X-Channel", "WEB")
                 .header("X-Segment", "C").header("X-Customer-Id", "0000123456")
-                .retrieve().body(com.example.fx.simulator.api.model.BookedTrade.class);
+                .retrieve().body(com.example.fx.tradingsystems.api.model.BookedTrade.class);
         assertThat(trade.getClientPrice()).isEqualByComparingTo(event.getClientPrice());
         assertThat(trade.getSellQuantity()).isEqualByComparingTo(event.getSellQuantity());
     }
@@ -148,12 +148,12 @@ class RestingOrderCallbackIntegrationTest {
         RestingOrder placed = place(unreachable);
 
         RestingOrder expired = awaitDelivery(placed.getOrderId());
-        assertThat(expired.getStatus()).isEqualTo(com.example.fx.simulator.api.model.RestingOrderStatus.EXPIRED);
-        assertThat(expired.getCallbackStatus()).isEqualTo(com.example.fx.simulator.api.model.CallbackStatus.DELIVERED);
+        assertThat(expired.getStatus()).isEqualTo(com.example.fx.tradingsystems.api.model.RestingOrderStatus.EXPIRED);
+        assertThat(expired.getCallbackStatus()).isEqualTo(com.example.fx.tradingsystems.api.model.CallbackStatus.DELIVERED);
 
         assertThat(received()).singleElement().isInstanceOfSatisfying(RestingOrderExpiredEvent.class, event -> {
             assertThat(event.getOrderId()).isEqualTo(placed.getOrderId());
-            assertThat(event.getStatus()).isEqualTo(com.example.fx.simulator.api.model.RestingOrderStatus.EXPIRED);
+            assertThat(event.getStatus()).isEqualTo(com.example.fx.tradingsystems.api.model.RestingOrderStatus.EXPIRED);
             assertThat(event.getExpiresAt()).isEqualTo(placed.getExpiresAt());
             assertThat(event.getAttempt()).isEqualTo(1);
         });

@@ -1,8 +1,8 @@
-package com.example.fx.backend.simulator;
+package com.example.fx.backend.tradingsystem;
 
-import com.example.fx.simulator.client.BookingApi;
-import com.example.fx.simulator.client.PricingApi;
-import com.example.fx.simulator.client.RestingOrdersApi;
+import com.example.fx.tradingsystems.client.BookingApi;
+import com.example.fx.tradingsystems.client.PricingApi;
+import com.example.fx.tradingsystems.client.RestingOrdersApi;
 import java.net.http.HttpClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -13,13 +13,13 @@ import org.springframework.web.client.support.RestClientAdapter;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 
 @Configuration
-@EnableConfigurationProperties(SimulatorClientProperties.class)
-public class SimulatorClientConfiguration {
+@EnableConfigurationProperties(TradingSystemClientProperties.class)
+public class TradingSystemClientConfiguration {
 
     @Bean
-    HttpServiceProxyFactory simulatorHttpServiceProxyFactory(
+    HttpServiceProxyFactory tradingSystemHttpServiceProxyFactory(
             RestClient.Builder builder,
-            SimulatorClientProperties properties
+            TradingSystemClientProperties properties
     ) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.connectTimeout())
@@ -33,17 +33,17 @@ public class SimulatorClientConfiguration {
     }
 
     @Bean
-    PricingApi simulatorPricingApi(HttpServiceProxyFactory factory) {
+    PricingApi tradingSystemPricingApi(HttpServiceProxyFactory factory) {
         return factory.createClient(PricingApi.class);
     }
 
     @Bean
-    BookingApi simulatorBookingApi(HttpServiceProxyFactory factory) {
+    BookingApi tradingSystemBookingApi(HttpServiceProxyFactory factory) {
         return factory.createClient(BookingApi.class);
     }
 
     @Bean
-    RestingOrdersApi simulatorRestingOrdersApi(HttpServiceProxyFactory factory) {
+    RestingOrdersApi tradingSystemRestingOrdersApi(HttpServiceProxyFactory factory) {
         return factory.createClient(RestingOrdersApi.class);
     }
 }

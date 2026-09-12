@@ -36,17 +36,17 @@
                 <version>${openapi-generator.version}</version>
                 <executions>
                     <execution>
-                        <id>generate-fx-simulator-contract</id>
+                        <id>generate-fx-trading-systems-contract</id>
                         <goals>
                             <goal>generate</goal>
                         </goals>
                         <configuration>
                             <output>${project.build.directory}/generated-sources/openapi-server</output>
-                            <inputSpec>${project.basedir}/src/main/resources/META-INF/resources/openapi/fx-simulator-api.yaml</inputSpec>
+                            <inputSpec>${project.basedir}/src/main/resources/META-INF/resources/openapi/fx-trading-systems-api.yaml</inputSpec>
                             <generatorName>spring</generatorName>
                             <library>spring-boot</library>
-                            <apiPackage>com.example.fx.simulator.api</apiPackage>
-                            <modelPackage>com.example.fx.simulator.api.model</modelPackage>
+                            <apiPackage>com.example.fx.tradingsystems.api</apiPackage>
+                            <modelPackage>com.example.fx.tradingsystems.api.model</modelPackage>
                             <generateApiTests>false</generateApiTests>
                             <generateModelTests>false</generateModelTests>
                             <generateApiDocumentation>false</generateApiDocumentation>
@@ -72,17 +72,17 @@
                         </configuration>
                     </execution>
                     <execution>
-                        <id>generate-fx-simulator-http-client</id>
+                        <id>generate-fx-trading-systems-http-client</id>
                         <goals>
                             <goal>generate</goal>
                         </goals>
                         <configuration>
                             <output>${project.build.directory}/generated-sources/openapi-client</output>
-                            <inputSpec>${project.basedir}/src/main/resources/META-INF/resources/openapi/fx-simulator-api.yaml</inputSpec>
+                            <inputSpec>${project.basedir}/src/main/resources/META-INF/resources/openapi/fx-trading-systems-api.yaml</inputSpec>
                             <generatorName>spring</generatorName>
                             <library>spring-http-interface</library>
-                            <apiPackage>com.example.fx.simulator.client</apiPackage>
-                            <modelPackage>com.example.fx.simulator.api.model</modelPackage>
+                            <apiPackage>com.example.fx.tradingsystems.client</apiPackage>
+                            <modelPackage>com.example.fx.tradingsystems.api.model</modelPackage>
                             <generateModels>false</generateModels>
                             <generateApiTests>false</generateApiTests>
                             <generateApiDocumentation>false</generateApiDocumentation>

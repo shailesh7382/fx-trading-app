@@ -10,11 +10,11 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
-import com.example.fx.simulator.api.model.CallbackStatus;
-import com.example.fx.simulator.api.model.RestingOrderStatus;
-import com.example.fx.simulator.api.model.Side;
-import com.example.fx.simulator.api.model.Tenor;
-import com.example.fx.simulator.api.model.TimeInForce;
+import com.example.fx.tradingsystems.api.model.CallbackStatus;
+import com.example.fx.tradingsystems.api.model.RestingOrderStatus;
+import com.example.fx.tradingsystems.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Tenor;
+import com.example.fx.tradingsystems.api.model.TimeInForce;
 import com.example.fx.simulator.config.RestingOrderProperties;
 import com.example.fx.simulator.config.SettlementProperties;
 import com.example.fx.simulator.config.SimulatorStateProperties;

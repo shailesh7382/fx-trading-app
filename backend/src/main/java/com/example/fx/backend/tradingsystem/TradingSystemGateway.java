@@ -1,15 +1,15 @@
-package com.example.fx.backend.simulator;
+package com.example.fx.backend.tradingsystem;
 
-import com.example.fx.simulator.api.model.BookedTrade;
-import com.example.fx.simulator.api.model.BookingRequest;
-import com.example.fx.simulator.api.model.PriceQuote;
-import com.example.fx.simulator.api.model.PriceRequest;
-import com.example.fx.simulator.api.model.RestingOrder;
-import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
-import com.example.fx.simulator.api.model.RestingOrderRequest;
-import com.example.fx.simulator.client.BookingApi;
-import com.example.fx.simulator.client.PricingApi;
-import com.example.fx.simulator.client.RestingOrdersApi;
+import com.example.fx.tradingsystems.api.model.BookedTrade;
+import com.example.fx.tradingsystems.api.model.BookingRequest;
+import com.example.fx.tradingsystems.api.model.PriceQuote;
+import com.example.fx.tradingsystems.api.model.PriceRequest;
+import com.example.fx.tradingsystems.api.model.RestingOrder;
+import com.example.fx.tradingsystems.api.model.RestingOrderAmendRequest;
+import com.example.fx.tradingsystems.api.model.RestingOrderRequest;
+import com.example.fx.tradingsystems.client.BookingApi;
+import com.example.fx.tradingsystems.client.PricingApi;
+import com.example.fx.tradingsystems.client.RestingOrdersApi;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
@@ -24,18 +24,18 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Single error-normalizing boundary around the generated OpenAPI clients. */
+/** Single error-normalizing boundary around the Trading System HTTP clients. */
 @Component
-public class SimulatorGateway {
-    private static final Logger LOG = LoggerFactory.getLogger(SimulatorGateway.class);
+public class TradingSystemGateway {
+    private static final Logger LOG = LoggerFactory.getLogger(TradingSystemGateway.class);
 
     private final PricingApi pricing;
     private final BookingApi booking;
     private final RestingOrdersApi restingOrders;
     private final ObjectMapper mapper;
 
-    public SimulatorGateway(PricingApi pricing, BookingApi booking, RestingOrdersApi restingOrders,
-                            ObjectMapper mapper) {
+    public TradingSystemGateway(PricingApi pricing, BookingApi booking, RestingOrdersApi restingOrders,
+                                ObjectMapper mapper) {
         this.pricing = pricing;
         this.booking = booking;
         this.restingOrders = restingOrders;
@@ -80,26 +80,27 @@ public class SimulatorGateway {
 
     private <T> T invoke(String operationName, Supplier<ResponseEntity<T>> operation) {
         long startedAt = System.nanoTime();
-        LOG.debug("Calling simulator operation={}", operationName);
+        LOG.debug("Calling Trading System operation={}", operationName);
         try {
             ResponseEntity<T> response = operation.get();
             T body = response.getBody();
             if (body == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Simulator returned an empty response.");
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Trading System returned an empty response.");
             }
-            LOG.debug("Simulator call completed operation={} status={} durationMs={}", operationName,
+            LOG.debug("Trading System call completed operation={} status={} durationMs={}", operationName,
                     response.getStatusCode(), elapsedMillis(startedAt));
             return body;
         } catch (RestClientResponseException exception) {
             String detail = problemDetail(exception);
-            LOG.warn("Simulator call rejected operation={} status={} durationMs={} detail={}", operationName,
+            LOG.warn("Trading System call rejected operation={} status={} durationMs={} detail={}", operationName,
                     exception.getStatusCode(), elapsedMillis(startedAt), detail);
             throw new ResponseStatusException(exception.getStatusCode(), detail, exception);
         } catch (ResourceAccessException exception) {
-            LOG.warn("Simulator call unavailable operation={} durationMs={} message={}", operationName,
+            LOG.warn("Trading System call unavailable operation={} durationMs={} message={}", operationName,
                     elapsedMillis(startedAt), exception.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "FX simulator is unavailable. Try again shortly.", exception);
+                    "Trading System is unavailable. Try again shortly.", exception);
         }
     }
 
@@ -118,6 +119,6 @@ public class SimulatorGateway {
         } catch (Exception ignored) {
             // Fall back to the HTTP status below when the remote body is not a problem document.
         }
-        return "Simulator request failed with " + exception.getStatusCode() + ".";
+        return "Trading System request failed with " + exception.getStatusCode() + ".";
     }
 }

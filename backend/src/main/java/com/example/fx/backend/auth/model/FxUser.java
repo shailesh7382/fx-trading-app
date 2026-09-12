@@ -2,9 +2,11 @@ package com.example.fx.backend.auth.model;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(name = "BKND_FX_USER")
 public class FxUser {
     @Id
     private String username;

@@ -90,7 +90,7 @@ public class NotificationService {
                     "MARKET-SPREAD-" + instrumentKey(widestSpread),
                     widestSpread.getCcyPair() + " shows the widest live spread",
                     widestSpread.getTenor() + " spread is " + formatSpread(widestSpread) + " across " + formatQuantity(widestSpread.getQty())
-                            + " with " + defaultText(widestSpread.getSource(), "SIMULATOR") + " pricing.",
+                            + " with " + defaultText(widestSpread.getSource(), "TRADING_SYSTEM") + " pricing.",
                     widestSpread,
                     getSpreadPips(widestSpread) >= 5 ? "warning" : "info",
                     now

@@ -2,9 +2,9 @@ package com.example.fx.simulator.web;
 
 import java.net.URI;
 
-import com.example.fx.simulator.api.RestingOrdersApi;
-import com.example.fx.simulator.api.model.RestingOrderRequest;
-import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
+import com.example.fx.tradingsystems.api.RestingOrdersApi;
+import com.example.fx.tradingsystems.api.model.RestingOrderRequest;
+import com.example.fx.tradingsystems.api.model.RestingOrderAmendRequest;
 import com.example.fx.simulator.domain.TradingModels.*;
 import com.example.fx.simulator.service.RestingOrderService;
 import org.springframework.http.MediaType;
@@ -23,7 +23,7 @@ public class RestingOrderController implements RestingOrdersApi {
     }
 
     @Override
-    public ResponseEntity<com.example.fx.simulator.api.model.RestingOrder> placeRestingOrder(
+    public ResponseEntity<com.example.fx.tradingsystems.api.model.RestingOrder> placeRestingOrder(
             RestingOrderRequest restingOrderRequest) {
         RestingOrderCommand command = mapper.restingOrderCommand(restingOrderRequest);
         RestingOrderPlacement placement = restingOrderService.place(command);
@@ -38,7 +38,7 @@ public class RestingOrderController implements RestingOrdersApi {
     }
 
     @Override
-    public ResponseEntity<com.example.fx.simulator.api.model.RestingOrder> getRestingOrder(
+    public ResponseEntity<com.example.fx.tradingsystems.api.model.RestingOrder> getRestingOrder(
             String orderId, String xRequestId, String xChannel, String xSegment, String xCustomerId) {
         RequestContext context = new RequestContext(xRequestId, xChannel, xSegment, xCustomerId);
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
@@ -46,7 +46,7 @@ public class RestingOrderController implements RestingOrdersApi {
     }
 
     @Override
-    public ResponseEntity<com.example.fx.simulator.api.model.RestingOrder> cancelRestingOrder(
+    public ResponseEntity<com.example.fx.tradingsystems.api.model.RestingOrder> cancelRestingOrder(
             String orderId, String xRequestId, String xChannel, String xSegment, String xCustomerId) {
         RequestContext context = new RequestContext(xRequestId, xChannel, xSegment, xCustomerId);
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
@@ -54,7 +54,7 @@ public class RestingOrderController implements RestingOrdersApi {
     }
 
     @Override
-    public ResponseEntity<com.example.fx.simulator.api.model.RestingOrder> amendRestingOrder(
+    public ResponseEntity<com.example.fx.tradingsystems.api.model.RestingOrder> amendRestingOrder(
             String orderId, RestingOrderAmendRequest restingOrderAmendRequest) {
         RestingOrderAmendment amendment = mapper.restingOrderAmendment(restingOrderAmendRequest);
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)

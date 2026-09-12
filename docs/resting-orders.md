@@ -394,4 +394,4 @@ Every failure is `application/problem+json` and echoes whatever identification t
 - Evaluation is periodic, not continuous, so triggering is not instantaneous and a brief spike through
   your limit between evaluations is not seen.
 - The authoritative contract, including the callback operation, is at
-  `http://localhost:8090/openapi/fx-simulator-api.yaml`, browsable at `/swagger-ui.html`.
+  `http://localhost:8090/openapi/fx-trading-systems-api.yaml`, browsable at `/swagger-ui.html`.

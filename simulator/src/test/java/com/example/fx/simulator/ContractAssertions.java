@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 final class ContractAssertions {
     private static final OpenApiInteractionValidator VALIDATOR = OpenApiInteractionValidator
             .createForSpecificationUrl(Objects.requireNonNull(ContractAssertions.class.getResource(
-                    "/META-INF/resources/openapi/fx-simulator-api.yaml")).toExternalForm())
+                    "/META-INF/resources/openapi/fx-trading-systems-api.yaml")).toExternalForm())
             .withResolveCombinators(false).build();
 
     static void validResponse(MvcResult result) throws Exception {

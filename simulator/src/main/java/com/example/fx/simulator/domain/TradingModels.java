@@ -8,12 +8,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import com.example.fx.simulator.api.model.CallbackStatus;
-import com.example.fx.simulator.api.model.RestingOrderStatus;
-import com.example.fx.simulator.api.model.QuoteStatus;
-import com.example.fx.simulator.api.model.Side;
-import com.example.fx.simulator.api.model.Tenor;
-import com.example.fx.simulator.api.model.TimeInForce;
+import com.example.fx.tradingsystems.api.model.CallbackStatus;
+import com.example.fx.tradingsystems.api.model.RestingOrderStatus;
+import com.example.fx.tradingsystems.api.model.QuoteStatus;
+import com.example.fx.tradingsystems.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Tenor;
+import com.example.fx.tradingsystems.api.model.TimeInForce;
 import com.example.fx.simulator.service.SimulatorApiException;
 
 public final class TradingModels {

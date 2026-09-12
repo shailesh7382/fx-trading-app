@@ -6,7 +6,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
-import com.example.fx.simulator.api.model.Tenor;
+import com.example.fx.tradingsystems.api.model.Tenor;
 import org.springframework.stereotype.Component;
 
 @Component

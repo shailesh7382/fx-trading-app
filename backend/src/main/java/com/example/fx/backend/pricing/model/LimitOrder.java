@@ -1,11 +1,13 @@
 package com.example.fx.backend.pricing.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 
 @Entity
+@Table(name = "BKND_LIMIT_ORDER")
 public class LimitOrder {
 
     @Id
@@ -53,7 +55,8 @@ public class LimitOrder {
     private OffsetDateTime lastEvaluatedAt;
     private Double lastEvaluatedPrice;
     private OffsetDateTime closedAt;
-    private String simulatorTradeId;
+    @Column(name = "TRADING_SYSTEM_TRADE_ID")
+    private String tradingSystemTradeId;
     private String callbackUrl;
     private String callbackStatus;
     private Integer callbackAttempts;
@@ -248,8 +251,12 @@ public class LimitOrder {
     public void setLastEvaluatedPrice(Double lastEvaluatedPrice) { this.lastEvaluatedPrice = lastEvaluatedPrice; }
     public OffsetDateTime getClosedAt() { return closedAt; }
     public void setClosedAt(OffsetDateTime closedAt) { this.closedAt = closedAt; }
-    public String getSimulatorTradeId() { return simulatorTradeId; }
-    public void setSimulatorTradeId(String simulatorTradeId) { this.simulatorTradeId = simulatorTradeId; }
+    @JsonProperty("simulatorTradeId")
+    public String getTradingSystemTradeId() { return tradingSystemTradeId; }
+    @JsonProperty("simulatorTradeId")
+    public void setTradingSystemTradeId(String tradingSystemTradeId) {
+        this.tradingSystemTradeId = tradingSystemTradeId;
+    }
     public String getCallbackUrl() { return callbackUrl; }
     public void setCallbackUrl(String callbackUrl) { this.callbackUrl = callbackUrl; }
     public String getCallbackStatus() { return callbackStatus; }

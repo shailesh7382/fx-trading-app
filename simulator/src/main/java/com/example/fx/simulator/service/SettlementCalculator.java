@@ -2,7 +2,7 @@ package com.example.fx.simulator.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import com.example.fx.simulator.api.model.Side;
+import com.example.fx.tradingsystems.api.model.Side;
 import com.example.fx.simulator.domain.TradingModels.*;
 import org.springframework.stereotype.Component;
 
