@@ -118,14 +118,14 @@ test('submits a spot GTD limit order from the rate grid', async () => {
   const user = userEvent.setup();
   const { refresh } = renderRateGrid({ limitOrders: [] });
 
-  await screen.findByRole('button', { name: /submit limit order/i });
+  await screen.findByRole('button', { name: /^submit$/i });
 
   await user.click(screen.getByRole('combobox', { name: /eurusd limit order tif/i }));
   await user.click(screen.getByRole('option', { name: 'GTD' }));
   await user.clear(screen.getByRole('spinbutton', { name: /eurusd limit price/i }));
   await user.type(screen.getByRole('spinbutton', { name: /eurusd limit price/i }), '1.08310');
 
-  await user.click(screen.getByRole('button', { name: /submit limit order/i }));
+  await user.click(screen.getByRole('button', { name: /^submit$/i }));
 
   expect(submitLimitOrder).toHaveBeenCalledWith(
     expect.objectContaining({

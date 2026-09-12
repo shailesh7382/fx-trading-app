@@ -172,7 +172,14 @@ function LimitTicket({ ccyPair, isSpot, rate, form, isSubmitting, onFieldChange,
           </Stack>
         </Box>
 
-        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '78px minmax(0, 1fr)', sm: '78px minmax(140px, 1fr) auto' },
+            gap: 0.75,
+            alignItems: 'center',
+          }}
+        >
           <TextField
             select
             size="small"
@@ -195,14 +202,14 @@ function LimitTicket({ ccyPair, isSpot, rate, form, isSubmitting, onFieldChange,
               value={form.goodTillDate}
               onChange={(event) => onFieldChange('goodTillDate', event.target.value)}
               slotProps={{ htmlInput: { 'aria-label': `${ccyPair} good till date` } }}
-              sx={{ ...compactFieldSx, flex: '1 1 auto', minWidth: 0 }}
+              sx={{ ...compactFieldSx, minWidth: { xs: 0, sm: 140 } }}
             />
           ) : (
             <Typography
               variant="caption"
               color="text.secondary"
               noWrap
-              sx={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.7rem' }}
+              sx={{ minWidth: 0, fontSize: '0.7rem' }}
             >
               Until cancelled
             </Typography>
@@ -213,11 +220,17 @@ function LimitTicket({ ccyPair, isSpot, rate, form, isSubmitting, onFieldChange,
             size="small"
             onClick={onSubmit}
             disabled={isSubmitting}
-            sx={{ minHeight: 32, fontSize: '0.72rem', px: 1.25, whiteSpace: 'nowrap', flexShrink: 0 }}
+            sx={{
+              minHeight: 32,
+              fontSize: '0.72rem',
+              px: 1.25,
+              whiteSpace: 'nowrap',
+              gridColumn: { xs: '1 / -1', sm: 'auto' },
+            }}
           >
-            {isSubmitting ? 'Submitting…' : 'Submit limit order'}
+            {isSubmitting ? 'Submitting…' : 'Submit'}
           </Button>
-        </Stack>
+        </Box>
       </Stack>
     </Box>
   );
