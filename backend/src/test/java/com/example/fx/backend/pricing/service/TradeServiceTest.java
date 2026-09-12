@@ -4,6 +4,7 @@ import com.example.fx.backend.pricing.model.Trade;
 import com.example.fx.backend.pricing.repository.TradeRepository;
 import com.example.fx.backend.simulator.SimulatorClientProperties;
 import com.example.fx.backend.simulator.SimulatorGateway;
+import com.example.fx.backend.support.SequentialIdGenerator;
 import com.example.fx.simulator.api.model.BookedTrade;
 import com.example.fx.simulator.api.model.BookingRequest;
 import com.example.fx.simulator.api.model.OneWayPriceQuote;
@@ -35,11 +36,13 @@ import static org.mockito.Mockito.*;
 class TradeServiceTest {
     @Mock TradeRepository repository;
     @Mock SimulatorGateway simulator;
+    @Mock SequentialIdGenerator idGenerator;
     private TradeService service;
 
     @BeforeEach
     void setUp() {
-        service = new TradeService(repository, simulator, properties());
+        service = new TradeService(repository, simulator, properties(), idGenerator);
+        lenient().when(idGenerator.generate()).thenReturn("B00000002");
         when(repository.findById(anyString())).thenReturn(Optional.empty());
         when(repository.save(any(Trade.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }

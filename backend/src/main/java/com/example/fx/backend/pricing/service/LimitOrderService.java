@@ -10,7 +10,7 @@ import com.example.fx.backend.pricing.repository.LimitOrderRepository;
 import com.example.fx.backend.simulator.SimulatorClientProperties;
 import com.example.fx.backend.simulator.SimulatorContractMapper;
 import com.example.fx.backend.simulator.SimulatorGateway;
-import com.example.fx.backend.support.AlphanumericIdGenerator;
+import com.example.fx.backend.support.SequentialIdGenerator;
 import com.example.fx.simulator.api.model.CallbackStatus;
 import com.example.fx.simulator.api.model.RestingOrderAmendRequest;
 import com.example.fx.simulator.api.model.RestingOrderEvent;
@@ -37,18 +37,17 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class LimitOrderService {
     private static final Logger LOG = LoggerFactory.getLogger(LimitOrderService.class);
-    private static final int MAX_ID_GENERATION_ATTEMPTS = 10;
 
     private final LimitOrderRepository repository;
     private final SimulatorGateway simulator;
     private final SimulatorClientProperties properties;
     private final TradeService tradeService;
     private final Clock clock;
-    private final AlphanumericIdGenerator idGenerator;
+    private final SequentialIdGenerator idGenerator;
 
     public LimitOrderService(LimitOrderRepository repository, SimulatorGateway simulator,
                              SimulatorClientProperties properties, TradeService tradeService, Clock clock,
-                             AlphanumericIdGenerator idGenerator) {
+                             SequentialIdGenerator idGenerator) {
         this.repository = repository;
         this.simulator = simulator;
         this.properties = properties;
@@ -60,7 +59,7 @@ public class LimitOrderService {
     @Transactional
     public LimitOrder submitLimitOrder(LimitOrderRequest request) {
         validate(request.getCcyPair(), request.getDealtCurrency(), request.getQty(), request.getLimitPrice());
-        String requestId = textOr(request.getRequestId(), UUID.randomUUID().toString());
+        String requestId = textOr(request.getRequestId(), idGenerator.generate());
         String channel = textOr(request.getChannel(), properties.channel());
         String segment = textOr(request.getSegment(), properties.segment());
         String customerId = textOr(request.getCustomerId(), properties.customerId());
@@ -113,7 +112,7 @@ public class LimitOrderService {
         validate(order.getCcyPair(), order.getDealtCurrency(), request.getQty(), request.getLimitPrice());
         TimeInForce timeInForce = parseTimeInForce(request.getTimeInForce());
         RestingOrderAmendRequest amendment = new RestingOrderAmendRequest()
-                .requestId(UUID.randomUUID().toString())
+                .requestId(idGenerator.generate())
                 .channel(order.getChannel()).segment(order.getSegment()).customerId(order.getCustomerId())
                 .quantity(BigDecimal.valueOf(request.getQty()))
                 .limitPrice(BigDecimal.valueOf(request.getLimitPrice()))
@@ -134,7 +133,7 @@ public class LimitOrderService {
         LOG.info("Cancelling resting order orderId={}", orderId);
         LimitOrder order = active(orderId);
         com.example.fx.simulator.api.model.RestingOrder cancelled = simulator.cancelRestingOrder(
-                orderId, UUID.randomUUID().toString(), order.getChannel(), order.getSegment(), order.getCustomerId());
+                orderId, idGenerator.generate(), order.getChannel(), order.getSegment(), order.getCustomerId());
         LimitOrder saved = repository.save(apply(cancelled, order));
         LOG.info("Resting order cancelled orderId={} status={}", saved.getId(), saved.getStatus());
         return saved;
@@ -176,7 +175,7 @@ public class LimitOrderService {
             order.setLastEvaluatedPrice(triggered.getClientPrice().doubleValue());
             order.setClosedAt(triggered.getOccurredAt());
             order.setSimulatorTradeId(triggered.getTradeId().toString());
-            tradeService.reconcileBooking(triggered.getTradeId(), UUID.randomUUID().toString(),
+            tradeService.reconcileBooking(triggered.getTradeId(), idGenerator.generate(),
                     triggered.getChannel(), triggered.getSegment(), triggered.getCustomerId(),
                     metadataFor(order), "LIMIT", order.getId());
         } else {
@@ -216,14 +215,14 @@ public class LimitOrderService {
             }
             try {
                 com.example.fx.simulator.api.model.RestingOrder remote = simulator.getRestingOrder(
-                        order.getId(), UUID.randomUUID().toString(), order.getChannel(), order.getSegment(),
+                        order.getId(), idGenerator.generate(), order.getChannel(), order.getSegment(),
                         order.getCustomerId());
                 apply(remote, order);
                 repository.save(order);
                 LOG.debug("Resting order reconciled orderId={} status={} callbackStatus={}",
                         order.getId(), order.getStatus(), order.getCallbackStatus());
                 if (remote.getTradeId() != null) {
-                    tradeService.reconcileBooking(remote.getTradeId(), UUID.randomUUID().toString(),
+                    tradeService.reconcileBooking(remote.getTradeId(), idGenerator.generate(),
                             order.getChannel(), order.getSegment(), order.getCustomerId(),
                             metadataFor(order), "LIMIT", order.getId());
                 }
@@ -361,16 +360,15 @@ public class LimitOrderService {
         return date.atTime(LocalTime.MAX).atZone(clock.getZone()).toOffsetDateTime();
     }
 
+    /**
+     * Order identifiers come from a counter reserved in the database, so they are
+     * unique by construction — there is nothing to check against the repository and
+     * nothing to retry.
+     */
     private String nextOrderId() {
-        for (int attempt = 0; attempt < MAX_ID_GENERATION_ATTEMPTS; attempt++) {
-            String candidate = idGenerator.generate();
-            if (!repository.existsById(candidate)) {
-                LOG.debug("Generated order ID orderId={} attempt={}", candidate, attempt + 1);
-                return candidate;
-            }
-            LOG.warn("Generated order ID collision orderId={} attempt={}", candidate, attempt + 1);
-        }
-        throw new IllegalStateException("Could not generate a unique order ID.");
+        String orderId = idGenerator.generate();
+        LOG.debug("Generated order ID orderId={}", orderId);
+        return orderId;
     }
 
     private String textOr(String value, String fallback) {

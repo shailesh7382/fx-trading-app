@@ -5,6 +5,7 @@ import com.example.fx.backend.pricing.repository.TradeRepository;
 import com.example.fx.backend.simulator.SimulatorClientProperties;
 import com.example.fx.backend.simulator.SimulatorContractMapper;
 import com.example.fx.backend.simulator.SimulatorGateway;
+import com.example.fx.backend.support.SequentialIdGenerator;
 import com.example.fx.simulator.api.model.BookedTrade;
 import com.example.fx.simulator.api.model.BookingRequest;
 import com.example.fx.simulator.api.model.OneWayPriceQuote;
@@ -30,12 +31,14 @@ public class TradeService {
     private final TradeRepository tradeRepository;
     private final SimulatorGateway simulator;
     private final SimulatorClientProperties properties;
+    private final SequentialIdGenerator idGenerator;
 
     public TradeService(TradeRepository tradeRepository, SimulatorGateway simulator,
-                        SimulatorClientProperties properties) {
+                        SimulatorClientProperties properties, SequentialIdGenerator idGenerator) {
         this.tradeRepository = tradeRepository;
         this.simulator = simulator;
         this.properties = properties;
+        this.idGenerator = idGenerator;
     }
 
     public List<Trade> getTrades() {
@@ -47,7 +50,7 @@ public class TradeService {
     @Transactional
     public Trade bookTrade(Trade draft) {
         validateDraft(draft);
-        String requestId = textOr(draft.getRequestId(), UUID.randomUUID().toString());
+        String requestId = textOr(draft.getRequestId(), idGenerator.generate());
         String channel = textOr(draft.getChannel(), properties.channel());
         String segment = textOr(draft.getSegment(), properties.segment());
         String customerId = textOr(draft.getCustomerId(), properties.customerId());
@@ -74,7 +77,7 @@ public class TradeService {
                     "Simulator returned an unexpected quote variant.");
         }
 
-        String bookingRequestId = UUID.randomUUID().toString();
+        String bookingRequestId = idGenerator.generate();
         BookingRequest bookingRequest = new BookingRequest()
                 .requestId(bookingRequestId)
                 .channel(channel)

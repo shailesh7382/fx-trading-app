@@ -4,6 +4,7 @@ import com.example.fx.backend.pricing.dto.FxPriceDTO;
 import com.example.fx.backend.simulator.SimulatorClientProperties;
 import com.example.fx.backend.simulator.SimulatorContractMapper;
 import com.example.fx.backend.simulator.SimulatorGateway;
+import com.example.fx.backend.support.SequentialIdGenerator;
 import com.example.fx.simulator.api.model.PriceQuote;
 import com.example.fx.simulator.api.model.TwoWayPriceQuote;
 import com.example.fx.simulator.api.model.TwoWayPriceRequest;
@@ -13,7 +14,6 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,13 +25,16 @@ public class FxPriceService {
     private final SimulatorGateway simulator;
     private final SimulatorClientProperties properties;
     private final Clock clock;
+    private final SequentialIdGenerator idGenerator;
     private volatile List<FxPriceDTO> allPricesSnapshot = List.of();
     private volatile Instant allPricesSnapshotAt = Instant.EPOCH;
 
-    public FxPriceService(SimulatorGateway simulator, SimulatorClientProperties properties, Clock clock) {
+    public FxPriceService(SimulatorGateway simulator, SimulatorClientProperties properties, Clock clock,
+                          SequentialIdGenerator idGenerator) {
         this.simulator = simulator;
         this.properties = properties;
         this.clock = clock;
+        this.idGenerator = idGenerator;
     }
 
     public synchronized List<FxPriceDTO> getAllPrices() {
@@ -69,7 +72,7 @@ public class FxPriceService {
 
     private FxPriceDTO requestTwoWay(String currencyPair, String tenor) {
         TwoWayPriceRequest request = new TwoWayPriceRequest()
-                .requestId(UUID.randomUUID().toString())
+                .requestId(idGenerator.generate())
                 .channel(properties.channel())
                 .segment(properties.segment())
                 .customerId(properties.customerId())
