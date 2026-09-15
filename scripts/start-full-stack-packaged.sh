@@ -2,38 +2,4 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
-
-require_commands java lsof
-
-RUN_ID="$(date '+%Y%m%d-%H%M%S')"
-CURRENT_RUN_DIR="$(prepare_run_dir "$RUN_ID")"
-MASTER_LOG="$CURRENT_RUN_DIR/startup.log"
-touch "$MASTER_LOG"
-print_environment_summary
-
-log_msg INFO "Starting the packaged FX trading stack. Logs will be written to $CURRENT_RUN_DIR"
-
-for service in "${SERVICES[@]}"; do
-  if is_service_running "$service"; then
-    log_msg ERROR "$(service_display_name "$service") is already running with PID $(read_pid "$service"). Stop the stack before starting again."
-    exit 1
-  fi
-done
-
-backend_jar="$(require_packaged_service_jar backend)"
-simulator_jar="$(require_packaged_service_jar simulator)"
-frontend_jar="$(require_packaged_service_jar frontend)"
-
-start_service simulator "$PARENT_POM_DIR/simulator" "java -jar $(printf '%q' "$simulator_jar")" 120
-start_service backend "$PARENT_POM_DIR/backend" "java -jar $(printf '%q' "$backend_jar")" 120
-start_service frontend "$PARENT_POM_DIR/frontend" "java -jar $(printf '%q' "$frontend_jar")" 120
-
-log_msg INFO "Packaged FX trading stack started successfully."
-log_msg INFO "Simulator API:     http://localhost:8090/swagger-ui.html"
-log_msg INFO "Backend service:   http://localhost:8080/api/rates"
-log_msg INFO "Trading UI:        http://localhost:5173"
-log_msg INFO "H2 TCP server:     tcp://localhost:9092"
-log_msg INFO "Use scripts/status-full-stack.sh to inspect running services."
-log_msg INFO "Use scripts/tail-logs.sh to follow the current run logs."
+exec "$SCRIPT_DIR/start-full-stack.sh" "$@" --mode packaged
