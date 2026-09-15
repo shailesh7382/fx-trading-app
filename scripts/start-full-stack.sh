@@ -10,7 +10,6 @@ source "$SCRIPT_DIR/lib/build.sh"
 source "$SCRIPT_DIR/lib/runtime.sh"
 
 STARTED_SERVICES=()
-STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-120}"
 MODE='development'
 
 usage() {
@@ -23,8 +22,7 @@ Modes:
   packaged     Run all three previously packaged Spring Boot jars.
 
 Environment:
-  SKIP_JAVA_BUILD=true         Reuse existing simulator and backend jars.
-  STARTUP_TIMEOUT_SECONDS=120  Readiness timeout for each service.
+  SKIP_JAVA_BUILD=true  Reuse existing simulator and backend jars.
 EOF
 }
 
@@ -58,22 +56,21 @@ start_java_services() {
   local backend_jar="$2"
 
   start_service \
-    simulator "$REPO_ROOT/simulator" "$STARTUP_TIMEOUT_SECONDS" "$simulator_jar" \
+    simulator "$REPO_ROOT/simulator" "$simulator_jar" \
     java -jar "$simulator_jar"
   start_service \
-    backend "$REPO_ROOT/backend" "$STARTUP_TIMEOUT_SECONDS" "$backend_jar" \
+    backend "$REPO_ROOT/backend" "$backend_jar" \
     java -jar "$backend_jar"
 }
 
 print_success() {
   local mode="$1"
 
-  log_msg INFO "FX trading stack started successfully in $mode mode."
+  log_msg INFO "FX trading stack launched in $mode mode."
   log_msg INFO 'Simulator API:   http://localhost:8090/swagger-ui.html'
   log_msg INFO 'Backend service: http://localhost:8080/api/rates'
   log_msg INFO 'Trading UI:      http://localhost:5173'
   log_msg INFO 'H2 TCP server:   tcp://localhost:9092'
-  log_msg INFO 'Status:          scripts/status-full-stack.sh'
   log_msg INFO 'Logs:            scripts/tail-logs.sh'
 }
 
@@ -84,7 +81,6 @@ main() {
   local vite_entry="$UI_DIR/node_modules/vite/bin/vite.js"
 
   parse_arguments "$@"
-  require_positive_integer STARTUP_TIMEOUT_SECONDS "$STARTUP_TIMEOUT_SECONDS"
 
   case "$MODE" in
     packaged) require_commands java ;;
@@ -106,7 +102,7 @@ main() {
       [[ -f "$vite_entry" ]] || die "Vite entry point not found: $vite_entry"
       start_java_services "$simulator_jar" "$backend_jar"
       start_service \
-        frontend "$UI_DIR" "$STARTUP_TIMEOUT_SECONDS" "$vite_entry" \
+        frontend "$UI_DIR" "$vite_entry" \
         node "$vite_entry" --host 0.0.0.0 --port 5173
       ;;
     production)
@@ -117,7 +113,7 @@ main() {
       backend_jar="$(require_service_jar backend)"
       start_java_services "$simulator_jar" "$backend_jar"
       start_service \
-        frontend "$REPO_ROOT" "$STARTUP_TIMEOUT_SECONDS" "$SCRIPT_DIR/serve-ui-dist.mjs" \
+        frontend "$REPO_ROOT" "$SCRIPT_DIR/serve-ui-dist.mjs" \
         env UI_STATIC_HOST=0.0.0.0 UI_STATIC_PORT=5173 UI_DIST_DIR="$UI_DIR/dist" \
         node "$SCRIPT_DIR/serve-ui-dist.mjs"
       ;;
@@ -127,7 +123,7 @@ main() {
       frontend_jar="$(require_service_jar frontend)"
       start_java_services "$simulator_jar" "$backend_jar"
       start_service \
-        frontend "$REPO_ROOT/frontend" "$STARTUP_TIMEOUT_SECONDS" "$frontend_jar" \
+        frontend "$REPO_ROOT/frontend" "$frontend_jar" \
         java -jar "$frontend_jar"
       ;;
   esac

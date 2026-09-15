@@ -3,10 +3,6 @@
 
 set -Eeuo pipefail
 
-PORT_CHECK_HOST="${PORT_CHECK_HOST:-127.0.0.1}"
-
-readonly PORT_CHECK_HOST
-
 ensure_runtime_dirs() {
   mkdir -p "$PID_DIR" "$META_DIR" "$STATE_DIR" "$RUNS_DIR"
 }
@@ -17,16 +13,6 @@ prepare_run_dir() {
 
   ensure_runtime_dirs
   mkdir -p "$run_dir"
-
-  if [[ -d "$CURRENT_LOG_DIR_LINK" && ! -L "$CURRENT_LOG_DIR_LINK" ]]; then
-    die "$CURRENT_LOG_DIR_LINK is a directory; expected a symbolic link."
-  fi
-
-  if [[ -e "$CURRENT_LOG_DIR_LINK" || -L "$CURRENT_LOG_DIR_LINK" ]]; then
-    rm -f "$CURRENT_LOG_DIR_LINK"
-  fi
-
-  ln -s "$run_dir" "$CURRENT_LOG_DIR_LINK"
   printf '%s\n' "$run_id" > "$CURRENT_RUN_ID_FILE"
   printf '%s\n' "$run_dir"
 }
@@ -34,9 +20,14 @@ prepare_run_dir() {
 latest_run_dir() {
   local candidate
   local latest=""
+  local run_id=""
 
-  if [[ -L "$CURRENT_LOG_DIR_LINK" || -d "$CURRENT_LOG_DIR_LINK" ]]; then
-    (cd "$CURRENT_LOG_DIR_LINK" >/dev/null 2>&1 && pwd -P) && return 0
+  if [[ -f "$CURRENT_RUN_ID_FILE" ]]; then
+    run_id="$(tr -d '[:space:]' < "$CURRENT_RUN_ID_FILE")"
+    if [[ "$run_id" =~ ^[0-9]{8}-[0-9]{6}(-[0-9]+)?$ && -d "$RUNS_DIR/$run_id" ]]; then
+      printf '%s\n' "$RUNS_DIR/$run_id"
+      return 0
+    fi
   fi
 
   [[ -d "$RUNS_DIR" ]] || return 1
@@ -69,72 +60,6 @@ read_pid() {
   printf '%s\n' "$pid"
 }
 
-is_port_listening() {
-  local port="$1"
-
-  (
-    exec 3<>"/dev/tcp/$PORT_CHECK_HOST/$port" || exit 1
-    exec 3<&-
-    exec 3>&-
-  ) 2>/dev/null
-}
-
-port_state() {
-  local port="$1"
-
-  if is_port_listening "$port"; then
-    printf '%s=open' "$port"
-  else
-    printf '%s=closed' "$port"
-  fi
-}
-
-service_port_states() {
-  local service="$1"
-  local port
-  local states=()
-  local joined
-
-  while IFS= read -r port; do
-    states+=("$(port_state "$port")")
-  done < <(service_ports "$service")
-
-  joined="$(IFS=,; printf '%s' "${states[*]}")"
-  printf '%s\n' "$joined"
-}
-
-are_service_ports_open() {
-  local service="$1"
-  local port
-
-  while IFS= read -r port; do
-    is_port_listening "$port" || return 1
-  done < <(service_ports "$service")
-}
-
-are_any_service_ports_open() {
-  local service="$1"
-  local port
-
-  while IFS= read -r port; do
-    is_port_listening "$port" && return 0
-  done < <(service_ports "$service")
-
-  return 1
-}
-
-ensure_service_ports_available() {
-  local service="$1"
-  local port
-
-  while IFS= read -r port; do
-    if is_port_listening "$port"; then
-      log_msg ERROR "Port $port is already accepting connections; cannot start $(service_display_name "$service")."
-      return 1
-    fi
-  done < <(service_ports "$service")
-}
-
 assert_stack_can_start() {
   local service
   local failed=0
@@ -144,7 +69,6 @@ assert_stack_can_start() {
       log_msg ERROR "Managed state already exists for $(service_display_name "$service"). Run scripts/stop-full-stack.sh before starting."
       failed=1
     fi
-    ensure_service_ports_available "$service" || failed=1
   done
 
   (( failed == 0 ))
@@ -202,62 +126,11 @@ create_launcher() {
   printf '%s\n' "$launcher_file"
 }
 
-log_recent_service_output() {
-  local service="$1"
-  local log_file="$CURRENT_RUN_DIR/$service.log"
-  local line
-
-  [[ -f "$log_file" ]] || return 0
-  while IFS= read -r line; do
-    log_msg ERROR "$line"
-  done < <(tail -n 40 "$log_file")
-}
-
-wait_for_service() {
-  local service="$1"
-  local timeout_seconds="$2"
-  local pid
-  local waited=0
-
-  while (( waited < timeout_seconds )); do
-    if are_service_ports_open "$service"; then
-      log_msg INFO "$(service_display_name "$service") is ready ($(service_port_states "$service"))."
-      return 0
-    fi
-
-    pid="$(read_pid "$service" 2>/dev/null || true)"
-    if [[ -n "$pid" ]] && ! is_current_shell_job_running "$pid"; then
-      log_msg ERROR "$(service_display_name "$service") exited before becoming ready. Recent log output:"
-      log_recent_service_output "$service"
-      return 1
-    fi
-
-    sleep 2
-    waited=$(( waited + 2 ))
-  done
-
-  log_msg ERROR "Timed out after ${timeout_seconds}s waiting for $(service_display_name "$service") ($(service_port_states "$service"))."
-  log_recent_service_output "$service"
-  return 1
-}
-
-is_current_shell_job_running() {
-  local expected_pid="$1"
-  local job_pid
-
-  while IFS= read -r job_pid; do
-    [[ "$job_pid" == "$expected_pid" ]] && return 0
-  done < <(jobs -pr)
-
-  return 1
-}
-
 start_service() {
   local service="$1"
   local work_dir="$2"
-  local timeout_seconds="$3"
-  local process_match="$4"
-  shift 4
+  local process_match="$3"
+  shift 3
 
   local launcher_file
   local log_file="$CURRENT_RUN_DIR/$service.log"
@@ -268,7 +141,6 @@ start_service() {
     log_msg ERROR "Managed state already exists for $(service_display_name "$service"). Run scripts/stop-full-stack.sh before starting."
     return 1
   fi
-  ensure_service_ports_available "$service"
 
   launcher_file="$(create_launcher "$service" "$work_dir" "$@")"
   command_line="$(shell_join "$@")"
@@ -279,8 +151,7 @@ start_service() {
   printf '%s\n' "$pid" > "$(service_pid_file "$service")"
   write_meta_file "$service" "$log_file" "$command_line" "$work_dir" "$pid" "$process_match"
   STARTED_SERVICES+=("$service")
-
-  wait_for_service "$service" "$timeout_seconds"
+  log_msg INFO "Launched $(service_display_name "$service") (PID $pid). Log: $log_file"
 }
 
 rollback_started_services() {
@@ -318,7 +189,6 @@ print_environment_summary() {
     printf 'NODE_VERSION: %s\n' "$(node --version 2>/dev/null || true)"
     printf 'NPM: %s\n' "$(command -v npm 2>/dev/null || true)"
     printf 'NPM_VERSION: %s\n' "$(npm --version 2>/dev/null || true)"
-    printf 'PORT_CHECK: bash /dev/tcp -> %s\n' "$PORT_CHECK_HOST"
     printf '%s\n' '================================================================'
   } >> "$MASTER_LOG"
 }

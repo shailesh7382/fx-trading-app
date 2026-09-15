@@ -9,12 +9,48 @@ source "$SCRIPT_DIR/lib/runtime.sh"
 
 STOP_TIMEOUT_SECONDS="${STOP_TIMEOUT_SECONDS:-30}"
 STOP_PORT_CHECK_TIMEOUT_SECONDS="${STOP_PORT_CHECK_TIMEOUT_SECONDS:-1}"
+STOP_PORT_CHECK_HOST="${STOP_PORT_CHECK_HOST:-127.0.0.1}"
 
 # External process and socket inspection is intentionally isolated in this
-# stop entry point. Shared start/status helpers use Bash built-ins only.
+# stop entry point.
 is_port_listening() {
   local port="$1"
-  nc -z -w "$STOP_PORT_CHECK_TIMEOUT_SECONDS" "$PORT_CHECK_HOST" "$port" </dev/null >/dev/null 2>&1
+  nc -z -w "$STOP_PORT_CHECK_TIMEOUT_SECONDS" "$STOP_PORT_CHECK_HOST" "$port" </dev/null >/dev/null 2>&1
+}
+
+port_state() {
+  local port="$1"
+
+  if is_port_listening "$port"; then
+    printf '%s=open' "$port"
+  else
+    printf '%s=closed' "$port"
+  fi
+}
+
+service_port_states() {
+  local service="$1"
+  local port
+  local states=()
+  local joined
+
+  while IFS= read -r port; do
+    states+=("$(port_state "$port")")
+  done < <(service_ports "$service")
+
+  joined="$(IFS=,; printf '%s' "${states[*]}")"
+  printf '%s\n' "$joined"
+}
+
+are_any_service_ports_open() {
+  local service="$1"
+  local port
+
+  while IFS= read -r port; do
+    is_port_listening "$port" && return 0
+  done < <(service_ports "$service")
+
+  return 1
 }
 
 is_pid_alive() {
@@ -182,9 +218,6 @@ main() {
   done
 
   rm -f "$CURRENT_RUN_ID_FILE"
-  if [[ -L "$CURRENT_LOG_DIR_LINK" ]]; then
-    rm -f "$CURRENT_LOG_DIR_LINK"
-  fi
 
   log_msg INFO 'FX trading stack stop flow completed.'
 }

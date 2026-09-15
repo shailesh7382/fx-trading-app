@@ -130,9 +130,8 @@ is already on disk, which is what `scripts/build-package-full-stack.sh` does aft
 ## Full-stack scripts
 
 The managed scripts support development, production-oriented, and fully
-packaged start modes. They provide readiness checks, per-service logs, PID
-ownership validation, rollback after partial startup, status, stop, and local
-database reset operations.
+packaged start modes. They provide per-service logs, PID ownership validation,
+rollback after a partial launch, stop, and local database reset operations.
 
 ```bash
 scripts/start-full-stack.sh --mode development

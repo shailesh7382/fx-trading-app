@@ -59,7 +59,6 @@ database_base_path() {
 
 assert_stack_stopped() {
   local service
-  local port
   local pid
   local busy=0
 
@@ -69,13 +68,6 @@ assert_stack_stopped() {
       log_msg ERROR "Managed state still exists for $(service_display_name "$service")${pid:+ (PID $pid)}."
       busy=1
     fi
-
-    while IFS= read -r port; do
-      if is_port_listening "$port"; then
-        log_msg ERROR "Port $port is still accepting connections."
-        busy=1
-      fi
-    done < <(service_ports "$service")
   done
 
   if (( busy != 0 )); then
